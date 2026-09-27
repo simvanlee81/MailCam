@@ -1,7 +1,7 @@
 // Post-Kamera Service Worker
 // App-Dateien: Netz zuerst (immer neueste Fassung), offline aus dem Speicher.
 // Scanner-Bibliothek opencv.js (~10 MB): Speicher zuerst – wird nur einmal geladen.
-const CACHE = "post-kamera-v2";
+const CACHE = "mailcam-v3";
 const OPENCV = "post-kamera-opencv-4.10";
 const DATEIEN = ["./", "index.html", "app.js", "manifest.webmanifest", "icon-192.png", "icon-512.png"];
 self.addEventListener("install", (e) => { e.waitUntil(caches.open(CACHE).then((c) => c.addAll(DATEIEN))); self.skipWaiting(); });
@@ -13,5 +13,6 @@ self.addEventListener("fetch", (e) => {
     e.respondWith(caches.open(OPENCV).then(async (c) => (await c.match(e.request)) || fetch(e.request).then((r) => { if (r.ok) c.put(e.request, r.clone()); return r; })));
     return;
   }
-  e.respondWith(fetch(e.request).then((r) => { const kopie = r.clone(); caches.open(CACHE).then((c) => c.put(e.request, kopie)); return r; }).catch(() => caches.match(e.request)));
+  // cache: "no-cache" = beim Server nachfragen, ob es eine neue Fassung gibt (Updates kommen sofort an)
+  e.respondWith(fetch(e.request, { cache: "no-cache" }).then((r) => { const kopie = r.clone(); caches.open(CACHE).then((c) => c.put(e.request, kopie)); return r; }).catch(() => caches.match(e.request)));
 });

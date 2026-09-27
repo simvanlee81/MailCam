@@ -51,9 +51,9 @@ Fertig. Ab jetzt reicht: **Symbol → 📷 → Fertig**.
 
 ---
 
-## Update auf v1.3
+## Update auf v1.4
 
-Im Repo `MailCam` die Dateien `app.js` und `index.html` neu hochladen. Die übrigen Dateien bleiben gleich, `opencv.js` muss also nicht erneut hoch. Danach die App zweimal neu öffnen.
+Im Repo `MailCam` die Dateien `app.js`, `index.html` und `sw.js` neu hochladen. `opencv.js` muss nicht erneut hoch. Ab v1.4 kommen Updates beim nächsten Öffnen sofort an. Die installierte Version steht unten im Verarbeitungs-Bildschirm und unter ⚙️. Danach die App zweimal neu öffnen.
 
 ## Update von v1.0 auf v1.1
 
@@ -116,6 +116,7 @@ Du kannst die App während der Verarbeitung schließen. Das Ergebnis erscheint b
 
 ## Versionen
 
+- **v1.4**: Updates kommen sofort an (kein veralteter Zwischenspeicher mehr); im Verarbeitungs-Bildschirm gibt es immer einen Ausweg („Nicht warten – zur Übersicht“); Versionsanzeige.
 - **v1.3**: Knopf „Abbrechen“ beim Hochladen; „Aufnahme verwerfen“ geht auch bei hängendem Upload; nach einem Neustart landet die App nicht mehr im Hochlade-Bildschirm; Notausgang `?reset`.
 - **v1.2**: Uploads mit Zeitlimit, automatischer Wiederholung und Fortschrittsanzeige; nicht hochgeladene Seiten bleiben auf dem Handy gespeichert und werden nach einem Neustart weiter hochgeladen; die Seitenerkennung im Scanner passt sich der Geschwindigkeit des Handys an und lässt Rechenzeit für den Upload frei.
 - **v1.1**: Live-Scanner mit Seitenerkennung, automatischer Aufnahme und Übernahme, Entzerrung, Scan-Look, Ecken-Korrektur und Taschenlampe. Verständliche Meldung, wenn die Workflow-Datei im Post-Archiv veraltet ist.

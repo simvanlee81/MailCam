@@ -3,7 +3,7 @@
 import { FilenSDK } from "@filen/sdk";
 import { ladeOpenCV, Scanner } from "./scanner.js";
 
-const VERSION = "1.3";
+const VERSION = "1.4";
 const WORKFLOW = "post-archiv.yml";
 const $ = (s) => document.querySelector(s);
 // Nur für automatische Tests: ersetzt Filen und GitHub durch Attrappen. Im normalen Betrieb nicht vorhanden.
@@ -530,10 +530,12 @@ function ansichtLauf() {
     unten = `<div class="karte"><strong data-upload-status>${esc(uploadText())}</strong><p class="klein">Bitte die App offen lassen, bis alle Fotos oben sind. Wird sie geschlossen, geht es beim nächsten Öffnen weiter.</p></div>
       <button class="zweit" data-a="lauf-abbrechen">Abbrechen – zurück zur Aufnahme</button>`;
   } else {
-    unten = `<p class="klein">Du kannst die App schließen – die Verarbeitung läuft weiter, das Ergebnis erscheint beim nächsten Öffnen.</p>`;
+    unten = `<p class="klein">Du kannst die App schließen – die Verarbeitung läuft weiter, das Ergebnis erscheint beim nächsten Öffnen.</p>
+      ${lauf.github?.url ? `<a class="klein" href="${esc(lauf.github.url)}" target="_blank" rel="noopener">GitHub-Protokoll öffnen</a>` : ""}
+      <button class="zweit" data-a="lauf-schliessen">Nicht warten – zur Übersicht</button>`;
   }
   return `<header><h1>${lauf.schritt === "fertig" ? "Erledigt" : lauf.schritt === "fehler" ? "Problem" : "Wird verarbeitet …"}</h1></header>
-  <ol class="schritte">${liste}</ol>${unten}`;
+  <ol class="schritte">${liste}</ol>${unten}<p class="klein mitte">MailCam ${VERSION}</p>`;
 }
 
 function zeichne() {
