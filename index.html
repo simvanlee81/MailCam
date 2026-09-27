@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Post-Kamera</title>
+<meta name="theme-color" content="#1f5f4a">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<style>
+:root{--bg:#f4f2ee;--karte:#fff;--text:#1d2320;--leise:#66706b;--linie:#e1ddd5;--akzent:#1f5f4a;--akzent-t:#fff;--rot:#b3261e;--rot-bg:#fbe9e7;--gelb:#8a5a00;--gelb-bg:#fff4d6;--gruen:#1f6b3a;--gruen-bg:#e3f4e8;--grau-bg:#eceae5}
+@media (prefers-color-scheme:dark){:root{--bg:#141816;--karte:#1e2421;--text:#e8ece9;--leise:#9aa39e;--linie:#2e3531;--akzent:#5fb894;--akzent-t:#0f1a15;--rot:#ff8a80;--rot-bg:#3a1f1d;--gelb:#ffd479;--gelb-bg:#3a3220;--gruen:#8fd6a8;--gruen-bg:#1d3326;--grau-bg:#2a302d}}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{margin:0;background:var(--bg);color:var(--text);font:16px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-tap-highlight-color:transparent}
+#app{max-width:560px;margin:0 auto;padding:max(16px,env(safe-area-inset-top)) 16px calc(32px + env(safe-area-inset-bottom))}
+header{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin:4px 0 16px}
+h1{font-size:1.6rem;margin:0;letter-spacing:-.01em}
+h2{font-size:1rem;margin:0 0 10px;color:var(--leise);font-weight:600;text-transform:uppercase;letter-spacing:.04em}
+section{margin:22px 0}
+.klein{font-size:.85rem;color:var(--leise)}
+.mitte{text-align:center}
+button{font:inherit;border:0;border-radius:14px;padding:14px 16px;width:100%;background:var(--akzent);color:var(--akzent-t);font-weight:600;margin:6px 0;cursor:pointer}
+button:disabled{opacity:.45}
+button.zweit{background:var(--karte);color:var(--text);border:1px solid var(--linie)}
+button.warn{background:var(--rot-bg);color:var(--rot)}
+button.fertig{background:var(--gruen);color:#fff;font-size:1.05rem;padding:16px}
+button.link{background:none;color:var(--leise);text-decoration:underline;font-weight:400;width:auto;padding:6px}
+button.icon{width:auto;background:none;font-size:1.4rem;padding:4px}
+button.gross{display:flex;flex-direction:column;align-items:center;gap:6px;padding:28px 16px;font-size:2.4rem;border-radius:22px}
+button.gross span{font-size:1.1rem}
+button.klein-gross{padding:18px;font-size:1.8rem}
+.reihe{display:flex;gap:8px}.reihe button{flex:1}
+label{display:block;font-size:.85rem;color:var(--leise);margin:10px 0}
+input{display:block;width:100%;margin-top:4px;padding:12px;border-radius:10px;border:1px solid var(--linie);background:var(--bg);color:var(--text);font:inherit}
+.karte{background:var(--karte);border:1px solid var(--linie);border-radius:16px;padding:14px 16px;margin:10px 0}
+.karte p{margin:8px 0}
+.karte.fehler{border-color:var(--rot);background:var(--rot-bg)}
+.kopf{display:flex;justify-content:space-between;gap:8px;align-items:baseline}
+.typ{font-size:.85rem;background:var(--grau-bg);padding:2px 8px;border-radius:99px;white-space:nowrap}
+.betrag{font-weight:600;margin:6px 0}
+.datei{font:12px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--leise);margin-top:8px;word-break:break-all}
+.todo{background:var(--gelb-bg);color:var(--gelb);border-radius:10px;padding:8px 10px;margin-top:8px;font-size:.95rem}
+.ok{color:var(--gruen);font-size:.9rem;margin-top:6px}
+.fristen{list-style:none;padding:0;margin:8px 0}.fristen li{margin:4px 0}
+.badge{display:inline-block;font-size:.78rem;font-weight:600;padding:2px 8px;border-radius:99px;white-space:nowrap}
+.badge.rot{background:var(--rot-bg);color:var(--rot)}.badge.gelb{background:var(--gelb-bg);color:var(--gelb)}.badge.grau{background:var(--grau-bg);color:var(--leise)}.badge.gruen{background:var(--gruen-bg);color:var(--gruen)}
+.liste{list-style:none;padding:0;margin:0}
+.liste li{display:flex;gap:10px;align-items:flex-start;min-width:0;background:var(--karte);border:1px solid var(--linie);border-radius:12px;padding:10px 12px;margin:6px 0}
+ul.liste li>div{flex:1;min-width:0;overflow-wrap:anywhere}
+.liste li.frist{flex-direction:column;gap:4px}
+.brief{background:var(--karte);border:1px solid var(--linie);border-radius:16px;padding:12px;margin:10px 0}
+.brief.aktiv{border-color:var(--akzent);box-shadow:0 0 0 1px var(--akzent)}
+.seiten{display:flex;gap:8px;overflow-x:auto;padding-bottom:4px}
+.seite{position:relative;flex:0 0 auto;width:72px;height:96px;padding:0;margin:0;border-radius:8px;overflow:hidden;background:var(--grau-bg);border:1px solid var(--linie)}
+.seite img{width:100%;height:100%;object-fit:cover;display:block}
+.seite .pdf{display:grid;place-items:center;height:100%;color:var(--leise);font-weight:700}
+.seite .status{position:absolute;right:4px;bottom:4px;width:20px;height:20px;border-radius:50%;display:grid;place-items:center;font-size:.75rem;background:var(--karte);color:var(--leise)}
+.seite.ok .status{background:var(--gruen);color:#fff}.seite.fehler .status{background:var(--rot);color:#fff}
+.aktionen{margin-top:14px}
+.schritte{list-style:none;padding:0;margin:0 0 16px}
+.schritte li{display:flex;gap:12px;align-items:center;padding:10px 0;border-bottom:1px solid var(--linie)}
+.punkt{width:24px;text-align:center;font-weight:700;color:var(--gruen)}
+.dreh{display:inline-block;width:16px;height:16px;border:2px solid var(--linie);border-top-color:var(--akzent);border-radius:50%;animation:d 1s linear infinite}
+@keyframes d{to{transform:rotate(360deg)}}
+.zusammen{display:flex;justify-content:space-between;align-items:baseline;gap:8px;background:var(--gruen-bg);color:var(--gruen);border-radius:14px;padding:14px 16px;margin:10px 0}
+.meldung{position:fixed;left:16px;right:16px;bottom:calc(16px + env(safe-area-inset-bottom));max-width:528px;margin:0 auto;background:var(--text);color:var(--bg);padding:12px 14px;border-radius:12px;font-size:.92rem;box-shadow:0 6px 24px rgba(0,0,0,.25)}
+a{color:var(--akzent)}
+</style>
+</head>
+<body>
+<main id="app"><p class="klein">Lädt …</p></main>
+<script src="app.js"></script>
+</body>
+</html>
