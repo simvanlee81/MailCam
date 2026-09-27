@@ -6,6 +6,8 @@ Fotografiere Briefe direkt ins Post-Archiv: Symbol auf dem Homescreen antippen, 
 - Beträge, **Fristen** und was zu tun ist
 - auf der Startseite deine offenen Fristen und To-dos aus dem ganzen Archiv
 
+Seit v1.1 fotografierst du mit einem **Live-Scanner**: Die App erkennt das Blatt im Kamerabild, löst automatisch aus, sobald es ruhig liegt, zieht die Seite gerade und macht sie weiß wie einen Scan (siehe unten).
+
 **Nächster Brief** trennt Briefe sicher voneinander. Ohne diese Taste erkennt das Skript selbst, wo ein neuer Brief beginnt.
 
 ---
@@ -21,7 +23,7 @@ Die App braucht das Post-Archiv ab **v3.0**. Lade aus `post-archiv_v3.0.zip` den
 Die App ist eine Webseite ohne Geheimnisse im Code. Deine Zugangsdaten gibst du erst auf dem Handy ein, und sie bleiben dort.
 
 1. Auf github.com ein **neues Repository** anlegen, z. B. `post-kamera`, **Public**. Kostenlose GitHub Pages gibt es nur für öffentliche Repos.
-2. **uploading an existing file** wählen und den **Inhalt** dieses Ordners hineinziehen (`index.html`, `app.js`, `manifest.webmanifest`, `sw.js`, die `icon-…png` und optional `quelltext`) → **Commit changes**.
+2. **uploading an existing file** wählen und den **Inhalt** dieses Ordners hineinziehen (`index.html`, `app.js`, `opencv.js`, `manifest.webmanifest`, `sw.js`, die `icon-…png` und optional `quelltext`) → **Commit changes**. `opencv.js` ist ca. 10 MB groß, der Upload dauert einen Moment.
 3. **Settings → Pages** → „Source: Deploy from a branch“ → Branch **main**, Ordner **/ (root)** → **Save**.
 4. Nach ca. 1 Minute ist die App erreichbar unter `https://DEIN-NAME.github.io/post-kamera/`.
 
@@ -49,11 +51,36 @@ Fertig. Ab jetzt reicht: **Symbol → 📷 → Fertig**.
 
 ---
 
+## Update von v1.0 auf v1.1
+
+Im Repo `post-kamera` per **Add file → Upload files** diese Dateien neu hochladen: `app.js`, `index.html`, `sw.js` und die neue **`opencv.js`**. Danach die App auf dem Handy einmal schließen und neu öffnen, beim zweiten Start ist die neue Version aktiv. Am Post-Archiv ändert sich nichts.
+
+## Scanner
+
+| Element | Funktion |
+|---|---|
+| Grüner Rahmen | Erkanntes Blatt. Der Ring am Auslöser füllt sich, solange das Blatt ruhig liegt. |
+| **Auto AN/AUS** | AN: löst automatisch aus und übernimmt die Seite nach 3 Sekunden. Tippst du vorher auf „Neu“ oder „Ecken anpassen“, wird nichts übernommen. |
+| Auslöser | Manuell aufnehmen, geht auch ohne erkanntes Blatt |
+| **Bild: Scan / Farbe** | Scan: Schatten weg, Papier weiß, Schrift kräftig (am besten für die Texterkennung). Farbe: nur gerade gezogen, für Fotos und farbige Formulare. |
+| 🔦 Licht | Taschenlampe, falls das Handy das im Browser erlaubt |
+| ➕ Nächster Brief | Die folgenden Seiten gehören zu einem neuen Brief |
+| Ecken anpassen | Die vier Ecken per Finger auf die Blattkanten ziehen |
+
+Nach einer Aufnahme wartet der Scanner, bis eine **andere** Seite im Bild liegt. So wird dieselbe Seite nicht doppelt aufgenommen.
+
+**Tipps für eine gute Erkennung:** Blatt auf eine dunklere oder gemusterte Unterlage legen, alle vier Ecken im Bild, nicht zu schräg von der Seite fotografieren. Auch Weiß auf hellem Tisch klappt meist. Wenn nicht, hilft „Ecken anpassen“.
+
+Beim ersten Öffnen lädt der Scanner einmalig die Bilderkennung (ca. 10 MB), danach startet er sofort. Unter ⚙️ → Scanner kannst du ihn ausschalten. Dann öffnet sich wieder die normale Handy-Kamera. In der Aufnahme-Ansicht gibt es außerdem immer den Knopf **📱 Handy-Kamera**.
+
+**Hinweis zur Bildqualität:** Der Scanner nutzt das Live-Bild der Kamera, meist 4K. Das ist für Briefe mehr als genug, aber etwas weniger als ein normales Foto. Für sehr kleine Schrift nimmst du die Handy-Kamera.
+
 ## Benutzung
 
 | Taste | Was passiert |
 |---|---|
-| 📷 **Brief fotografieren / Nächste Seite** | Kamera öffnet sich, das Foto wird verkleinert und sofort hochgeladen (✓ am Vorschaubild) |
+| 📷 **Brief fotografieren / Nächste Seite** | Scanner öffnet sich, jede übernommene Seite wird sofort hochgeladen (✓ am Vorschaubild) |
+| 📱 **Handy-Kamera** | Normale Kamera statt Scanner |
 | ➕ **Nächster Brief** | Alle folgenden Fotos gehören zu einem neuen Brief |
 | 📎 **Datei** | Vorhandenes Foto oder PDF auswählen |
 | Vorschaubild antippen | Seite löschen (z. B. verwackelt) |
@@ -76,6 +103,7 @@ Du kannst die App während der Verarbeitung schließen. Das Ergebnis erscheint b
 
 ## Versionen
 
+- **v1.1**: Live-Scanner mit Seitenerkennung, automatischer Aufnahme und Übernahme, Entzerrung, Scan-Look, Ecken-Korrektur und Taschenlampe. Verständliche Meldung, wenn die Workflow-Datei im Post-Archiv veraltet ist.
 - **v1.0**: Erste Version (braucht Post-Archiv ab v3.0).
 
 Der Ordner `quelltext` enthält den Quellcode. Nach Änderungen an `quelltext/src/app.js` baust du die App mit `npm install && node build.mjs src/app.js ../app.js` neu. Für die Benutzung brauchst du ihn nicht.

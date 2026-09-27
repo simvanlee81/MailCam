@@ -1,8 +1,9 @@
 // Post-Kamera – fotografiert Briefe direkt in den Filen-Eingang, startet die Verarbeitung
 // und zeigt, was daraus geworden ist (Dateien, Fristen, To-dos).
 import { FilenSDK } from "@filen/sdk";
+import { ladeOpenCV, Scanner } from "./scanner.js";
 
-const VERSION = "1.0";
+const VERSION = "1.1";
 const WORKFLOW = "post-archiv.yml";
 const $ = (s) => document.querySelector(s);
 // Nur für automatische Tests: ersetzt Filen und GitHub durch Attrappen. Im normalen Betrieb nicht vorhanden.
@@ -17,6 +18,8 @@ const speicher = {
   weg(k) { try { localStorage.removeItem(k); } catch {} },
 };
 const einst = () => speicher.lies("pk_einstellungen", { ordner: "/Dokumente", github: { repo: "post-archiv" } });
+const scanEinst = () => ({ an: true, auto: true, scan: true, ...speicher.lies("pk_scanner", {}) });
+const scanEinstSpeichern = (e) => speicher.schreib("pk_scanner", e);
 
 // ---------- Filen ----------
 let _sdk = null;
@@ -63,6 +66,7 @@ async function github(weg, opt = {}) {
   });
   if (!res.ok) {
     const text = await res.text().catch(() => "");
+    if (res.status === 422 && /Unexpected inputs/i.test(text)) throw new Error("Die Workflow-Datei im Repo post-archiv ist veraltet – bitte .github/workflows/post-archiv.yml auf Version 3.0 aktualisieren.");
     const hinweis = res.status === 401 ? "Token ungültig oder abgelaufen" : res.status === 403 ? "Token hat keine Berechtigung für Actions" : res.status === 404 ? "Repo oder Workflow nicht gefunden – Benutzername/Repo prüfen" : text.slice(0, 150);
     throw new Error(`GitHub ${res.status}: ${hinweis}`);
   }
@@ -355,6 +359,13 @@ function ansichtEinrichtung() {
     <p class="klein">Fine-grained Token, nur für dieses Repo, Berechtigung „Actions: Read and write“.</p>
     <button data-a="speichern">Speichern & testen</button>
   </section>
+  <section class="karte">
+    <h2>3 · Scanner</h2>
+    <label class="schalter"><input type="checkbox" id="sc-an" ${scanEinst().an ? "checked" : ""}> Live-Scanner mit Seitenerkennung verwenden</label>
+    <label class="schalter"><input type="checkbox" id="sc-auto" ${scanEinst().auto ? "checked" : ""}> Automatisch auslösen, wenn die Seite ruhig liegt</label>
+    <label class="schalter"><input type="checkbox" id="sc-scan" ${scanEinst().scan ? "checked" : ""}> Scan-Look (Schatten entfernen, weißes Papier)</label>
+    <p class="klein">Beim ersten Öffnen lädt der Scanner einmalig ca. 10 MB. Aus: normale Handy-Kamera.</p>
+  </section>
   ${e.github?.token && angemeldet ? `<button class="zweit" data-a="zurueck">Zurück</button>` : ""}
   <p class="klein mitte">Version ${VERSION}</p>`;
 }
@@ -397,6 +408,9 @@ function ansichtAufnahme() {
     <div class="reihe">
       <button class="zweit" data-a="naechster">➕ Nächster Brief</button>
       <button class="zweit" data-a="datei">📎 Datei</button>
+    </div>
+    <div class="reihe">
+      <button class="zweit" data-a="handykamera">📱 Handy-Kamera</button>
     </div>
     <button class="fertig" data-a="fertig" ${s.seiten.length ? "" : "disabled"}>✅ Fertig – verarbeiten</button>
     <button class="link" data-a="abbrechen">Aufnahme verwerfen</button>
@@ -460,9 +474,44 @@ for (const inp of [kameraInput, dateiInput]) {
   });
 }
 
+// ---------- Scanner ----------
+let scanner = null;
+async function kameraOeffnen() {
+  if (!scanEinst().an || !navigator.mediaDevices?.getUserMedia) return kameraInput.click();
+  if (scanner) return;
+  meldung("Scanner wird geladen …");
+  try {
+    const { cv } = await ladeOpenCV();
+    scanner = new Scanner({
+      cv,
+      einstellungen: scanEinst,
+      speichereEinstellungen: scanEinstSpeichern,
+      status: () => { const s = sitzung(); return { brief: s?.brief || 1, seitenImBrief: s ? s.seiten.filter((x) => x.b === s.brief).length : 0 }; },
+      onSeite: async (blob) => { ansicht = "aufnahme"; await fotoAufgenommen([new File([blob], "scan.jpg", { type: "image/jpeg", lastModified: Date.now() })]); },
+      onNaechsterBrief: () => { const s = sitzung(); if (!s || !s.seiten.some((x) => x.b === s.brief)) { scanner.hinweis("Erst eine Seite aufnehmen"); return false; } naechsterBrief(); return true; },
+      onSchliessen: () => { scanner = null; if (sitzung()) ansicht = "aufnahme"; zeichne(); },
+    });
+    meldungText = "";
+    await scanner.starten();
+  } catch (e) {
+    scanner?.beenden();
+    scanner = null;
+    const grund = /Permission|NotAllowed/i.test(e.name + e.message) ? "Kamera-Zugriff wurde nicht erlaubt" : e.message;
+    meldung(`Scanner nicht verfügbar (${grund}) – normale Kamera wird geöffnet.`);
+    kameraInput.click();
+  }
+}
+// Scanner-Bibliothek im Hintergrund vorladen, damit der erste Start schnell geht (nicht im Datensparmodus)
+function vorladen() {
+  if (!scanEinst().an || navigator.connection?.saveData) return;
+  const los = () => fetch("opencv.js").catch(() => {});
+  "requestIdleCallback" in window ? requestIdleCallback(los, { timeout: 5000 }) : setTimeout(los, 3000);
+}
+
 const aktionen = {
-  kamera: () => kameraInput.click(),
-  "kamera-neu": () => { lauf = null; speicher.weg("pk_lauf"); kameraInput.click(); },
+  kamera: () => kameraOeffnen(),
+  handykamera: () => kameraInput.click(),
+  "kamera-neu": () => { lauf = null; speicher.weg("pk_lauf"); kameraOeffnen(); },
   datei: () => dateiInput.click(),
   naechster: naechsterBrief,
   loeschen: (el) => seiteLoeschen(el.dataset.name),
@@ -496,6 +545,7 @@ const aktionen = {
     const e = einst();
     e.ordner = $("#f-ordner").value.trim() || "/Dokumente";
     if (!e.ordner.startsWith("/")) e.ordner = "/" + e.ordner;
+    scanEinstSpeichern({ ...scanEinst(), an: $("#sc-an").checked, auto: $("#sc-auto").checked, scan: $("#sc-scan").checked });
     e.github = { owner: $("#g-owner").value.trim(), repo: $("#g-repo").value.trim() || "post-archiv", token: $("#g-token").value.trim() };
     speicher.schreib("pk_einstellungen", e);
     _eingangUuid = null;
@@ -531,4 +581,4 @@ if (ansicht !== "einrichtung") ladeStand();
 if (lauf?.schritt === "warten") beobachten();
 setInterval(() => { if (ansicht === "lauf" && lauf?.schritt === "warten") zeichne(); }, 1000);
 document.addEventListener("visibilitychange", () => { if (!document.hidden && ansicht === "start") ladeStand(); });
-if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
+if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").then(vorladen, () => {});
