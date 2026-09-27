@@ -248,17 +248,21 @@ export class Scanner {
   hinweis(t) { this.el.querySelector(".sc-hinweis").textContent = t || ""; }
 
   // Erkennung ~8x pro Sekunde auf einem verkleinerten Bild
-  async schleife() {
-    let letzte = 0;
-    const takt = async (zeit) => {
+  // Erkennung passt sich dem Handy an: nach jeder Messung mindestens doppelt so lange Pause, wie sie gedauert hat
+  // (so bleibt immer mindestens die Hälfte der Rechenzeit für Anzeige, Verschlüsselung und Upload frei)
+  schleife() {
+    const takt = () => {
       if (!this.aktiv) return;
-      if (!this.pause && zeit - letzte > 120 && this.video.videoWidth) {
-        letzte = zeit;
+      let dauer = 0;
+      if (!this.pause && this.video.videoWidth && !document.hidden) {
+        const t0 = performance.now();
         try { this.erkenne(); } catch (e) { console.warn(e); }
+        dauer = performance.now() - t0;
+        this.messdauer = this.messdauer ? this.messdauer * 0.7 + dauer * 0.3 : dauer;
       }
-      requestAnimationFrame(takt);
+      setTimeout(takt, Math.max(130, (this.messdauer || 0) * 2));
     };
-    requestAnimationFrame(takt);
+    setTimeout(takt, 200);
   }
 
   erkenne() {
@@ -286,8 +290,9 @@ export class Scanner {
       else if (ecken.some((p, i) => abstand(p, this.letzteAufnahme[i]) > diag * 0.08)) this.letzteAufnahme = null;
       else this.leerZaehler = 0;
     }
-    const noetig = 8;
-    const fortschritt = this.einstellungen().auto && !this.letzteAufnahme ? Math.min(1, (this.verlauf.length - 1) / noetig) : 0;
+    // ca. 1 Sekunde ruhig (mindestens 3 Messungen)
+    const ruhigMs = this.verlauf.length > 1 ? this.verlauf.length * Math.max(130, (this.messdauer || 0) * 2 + (this.messdauer || 0)) : 0;
+    const fortschritt = this.einstellungen().auto && !this.letzteAufnahme && this.verlauf.length >= 2 ? Math.min(1, ruhigMs / 1100) * (this.verlauf.length >= 3 ? 1 : 0.6) : 0;
     this.zeichneOverlay(ecken, fortschritt);
     if (!ecken) this.hinweis("Seite ins Bild halten");
     else if (this.letzteAufnahme) this.hinweis("Nächste Seite hinlegen");

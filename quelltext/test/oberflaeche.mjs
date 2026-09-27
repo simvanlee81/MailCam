@@ -2,7 +2,7 @@
 import { starte } from "./browser-helfer.mjs";
 const SHOTS = process.argv[2] || "/tmp";
 const FOTOS = ["/tmp/claude-0/-home-claude/4760dfad-3764-5a2e-89c4-a82060c51d08/scratchpad/vier/1.jpg", "/tmp/claude-0/-home-claude/4760dfad-3764-5a2e-89c4-a82060c51d08/scratchpad/vier/2.jpg", "/tmp/claude-0/-home-claude/4760dfad-3764-5a2e-89c4-a82060c51d08/scratchpad/vier/3.jpg"];
-const { url, browser, stop } = await starte(process.argv[4] || "../");
+const { url, browser, stop } = await starte("/home/claude/post-kamera/public");
 const ctx = await browser.newContext({ viewport: { width: 412, height: 915 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, colorScheme: process.argv[3] || "light" });
 const page = await ctx.newPage();
 const fehler = [];

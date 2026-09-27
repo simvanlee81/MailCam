@@ -6,6 +6,8 @@ const ORDNER = process.argv[4] || "/home/claude/post-kamera/public";
 const { url, browser, stop } = await starte(ORDNER, ["--use-fake-ui-for-media-stream", "--use-fake-device-for-media-stream", "--use-file-for-fake-video-capture=" + VIDEO]);
 const ctx = await browser.newContext({ viewport: { width: 412, height: 860 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, permissions: ["camera"] });
 const page = await ctx.newPage();
+const BREMSE = Number(process.argv[5] || 1);
+if (BREMSE > 1) { const cdp = await ctx.newCDPSession(page); await cdp.send("Emulation.setCPUThrottlingRate", { rate: BREMSE }); }
 const fehler = [];
 page.on("pageerror", (e) => fehler.push(e.message));
 page.on("console", (m) => m.type() === "error" && fehler.push(m.text()));
@@ -36,5 +38,6 @@ await page.click(".sc-fertig");
 await page.waitForTimeout(500);
 await page.screenshot({ path: SHOTS + "/s5-aufnahme.png", fullPage: true });
 console.log(JSON.stringify(await page.evaluate(() => ({ h: window.PK_TEST.hochgeladen, g: window.PK_TEST.groessen }))));
+console.log("Erkennung dauert im Schnitt:", await page.evaluate(() => document.querySelector(".scanner") ? "-" : "(Scanner zu)"));
 console.log("Fehler:", fehler);
 await stop();

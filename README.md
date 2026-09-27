@@ -51,6 +51,10 @@ Fertig. Ab jetzt reicht: **Symbol → 📷 → Fertig**.
 
 ---
 
+## Update auf v1.3
+
+Im Repo `MailCam` die Dateien `app.js` und `index.html` neu hochladen. Die übrigen Dateien bleiben gleich, `opencv.js` muss also nicht erneut hoch. Danach die App zweimal neu öffnen.
+
 ## Update von v1.0 auf v1.1
 
 Im Repo `post-kamera` per **Add file → Upload files** diese Dateien neu hochladen: `app.js`, `index.html`, `sw.js` und die neue **`opencv.js`**. Danach die App auf dem Handy einmal schließen und neu öffnen, beim zweiten Start ist die neue Version aktiv. Am Post-Archiv ändert sich nichts.
@@ -94,7 +98,16 @@ Du kannst die App während der Verarbeitung schließen. Das Ergebnis erscheint b
 - Die App speichert auf dem Handy: die Filen-Sitzungsschlüssel (**nicht** dein Passwort) und den GitHub-Token. Wer dein **entsperrtes** Handy hat, käme damit an dein Filen-Konto. Unter ⚙️ kannst du dich jederzeit abmelden.
 - Der Code der App ist öffentlich (GitHub Pages), enthält aber keine Zugangsdaten.
 
+## Hochladen
+
+- Jede Seite wird sofort nach der Aufnahme hochgeladen. Oben steht der Fortschritt, z. B. „lädt 2 … (45 %)“.
+- **Hängt eine Verbindung**, bricht die App nach ca. 1 Minute ohne Fortschritt ab und versucht es automatisch noch zweimal.
+- **Noch nicht hochgeladene Seiten bleiben auf dem Handy gespeichert.** Wird die App geschlossen, geht der Upload beim nächsten Öffnen weiter.
+- Klappt es auch nach 3 Versuchen nicht, erscheint „erneut versuchen“ mit dem Grund.
+
 ## Wenn etwas nicht klappt
+
+- **App hängt in einem Bildschirm fest:** `…/MailCam/?reset` im Browser öffnen. Das setzt die aktuelle Aufnahme und Verarbeitung zurück, die Anmeldungen bei Filen und GitHub bleiben erhalten. Schon hochgeladene Fotos liegen weiter im Eingang und werden beim nächsten Lauf verarbeitet.
 
 - **Filen-Anmeldung schlägt mit „Network Error“ o. ä. fehl:** Möglicherweise lässt Filen Anfragen von fremden Webseiten nicht zu. Das konnte ich vorab nicht testen. Schick mir die Meldung.
 - **„GitHub 401/403“:** Token falsch, abgelaufen oder ohne „Actions: Read and write“.
@@ -103,6 +116,8 @@ Du kannst die App während der Verarbeitung schließen. Das Ergebnis erscheint b
 
 ## Versionen
 
+- **v1.3**: Knopf „Abbrechen“ beim Hochladen; „Aufnahme verwerfen“ geht auch bei hängendem Upload; nach einem Neustart landet die App nicht mehr im Hochlade-Bildschirm; Notausgang `?reset`.
+- **v1.2**: Uploads mit Zeitlimit, automatischer Wiederholung und Fortschrittsanzeige; nicht hochgeladene Seiten bleiben auf dem Handy gespeichert und werden nach einem Neustart weiter hochgeladen; die Seitenerkennung im Scanner passt sich der Geschwindigkeit des Handys an und lässt Rechenzeit für den Upload frei.
 - **v1.1**: Live-Scanner mit Seitenerkennung, automatischer Aufnahme und Übernahme, Entzerrung, Scan-Look, Ecken-Korrektur und Taschenlampe. Verständliche Meldung, wenn die Workflow-Datei im Post-Archiv veraltet ist.
 - **v1.0**: Erste Version (braucht Post-Archiv ab v3.0).
 

@@ -3,7 +3,7 @@
 import { FilenSDK } from "@filen/sdk";
 import { ladeOpenCV, Scanner } from "./scanner.js";
 
-const VERSION = "1.1";
+const VERSION = "1.3";
 const WORKFLOW = "post-archiv.yml";
 const $ = (s) => document.querySelector(s);
 // Nur für automatische Tests: ersetzt Filen und GitHub durch Attrappen. Im normalen Betrieb nicht vorhanden.
@@ -50,11 +50,46 @@ async function liesJson(p) {
   const buf = await sdk().fs().readFile({ path: p });
   return JSON.parse(new TextDecoder().decode(buf));
 }
-async function hochladen(datei) {
-  if (TEST) return TEST.hochladen(datei);
-  const item = await sdk().cloud().uploadWebFile({ file: datei, parent: await eingangUuid() });
-  return item.uuid;
+async function hochladen(datei, onProgress) {
+  if (TEST) return TEST.hochladen(datei, onProgress);
+  const abbruch = new AbortController();
+  // Zeitlimit: 60 s + 30 s pro MB, ohne Fortschritt – eine hängende Verbindung blockiert sonst die ganze Warteschlange
+  const limit = 60000 + (datei.size / 1048576) * 30000;
+  let uebertragen = 0;
+  let timer;
+  const wache = () => { clearTimeout(timer); timer = setTimeout(() => abbruch.abort(), limit); };
+  wache();
+  try {
+    const parent = await eingangUuid();
+    const item = await Promise.race([
+      sdk().cloud().uploadWebFile({
+        file: datei, parent, abortSignal: abbruch.signal,
+        onProgress: (n) => { uebertragen += n; wache(); onProgress?.(Math.min(1, uebertragen / datei.size)); },
+      }),
+      new Promise((_, rej) => abbruch.signal.addEventListener("abort", () => rej(new Error("Zeitüberschreitung beim Hochladen")))),
+    ]);
+    return item.uuid;
+  } finally {
+    clearTimeout(timer);
+  }
 }
+
+// ---------- Zwischenspeicher für noch nicht hochgeladene Seiten (übersteht Schließen der App) ----------
+const ablage = (() => {
+  let db;
+  const oeffnen = () => db || (db = new Promise((r, j) => {
+    const q = indexedDB.open("mailcam", 1);
+    q.onupgradeneeded = () => q.result.createObjectStore("seiten");
+    q.onsuccess = () => r(q.result);
+    q.onerror = () => j(q.error);
+  }));
+  const tx = async (modus, f) => { const d = await oeffnen(); return new Promise((r, j) => { const t = d.transaction("seiten", modus); const q = f(t.objectStore("seiten")); t.oncomplete = () => r(q?.result); t.onerror = () => j(t.error); }); };
+  return {
+    put: (k, blob) => tx("readwrite", (st) => st.put(blob, k)).catch(() => {}),
+    get: (k) => tx("readonly", (st) => st.get(k)).catch(() => null),
+    del: (k) => tx("readwrite", (st) => st.delete(k)).catch(() => {}),
+  };
+})();
 
 // ---------- GitHub ----------
 async function github(weg, opt = {}) {
@@ -109,33 +144,67 @@ const sitzung = () => speicher.lies("pk_sitzung");
 const sitzungSpeichern = (s) => speicher.schreib("pk_sitzung", s);
 
 let warteschlange = Promise.resolve();
+const fortschritt = new Map(); // Seitenname -> 0..1
+function eintragSetzen(name, felder) {
+  const s = sitzung();
+  const x = s?.seiten.find((y) => y.name === name);
+  if (!x) return false;
+  Object.assign(x, felder);
+  sitzungSpeichern(s);
+  return true;
+}
 function seiteHochladen(seite, blob) {
+  ablage.put(seite.name, blob);
   warteschlange = warteschlange.then(async () => {
-    const s = sitzung();
-    const eintrag = s?.seiten.find((x) => x.name === seite.name);
-    if (!eintrag) return;
-    try {
-      eintrag.status = "laedt";
-      sitzungSpeichern(s);
+    if (!sitzung()?.seiten.some((y) => y.name === seite.name)) { ablage.del(seite.name); return; }
+    let letzterFehler;
+    for (let versuch = 1; versuch <= 3; versuch++) {
+      eintragSetzen(seite.name, { status: "laedt", versuch });
+      fortschritt.set(seite.name, 0);
       zeichne();
-      eintrag.uuid = await hochladen(new File([blob], seite.name, { type: blob.type || "image/jpeg", lastModified: Date.now() }));
-      eintrag.status = "ok";
-    } catch (e) {
-      eintrag.status = "fehler";
-      eintrag.fehler = e.message;
-      blobs.set(seite.name, blob); // für "Erneut versuchen"
+      try {
+        const datei = new File([blob], seite.name, { type: blob.type || "image/jpeg", lastModified: Date.now() });
+        const uuid = await hochladen(datei, (p) => { fortschritt.set(seite.name, p); zeichneStatus(); });
+        eintragSetzen(seite.name, { status: "ok", uuid, fehler: null });
+        fortschritt.delete(seite.name);
+        ablage.del(seite.name);
+        zeichne();
+        return;
+      } catch (e) {
+        letzterFehler = e;
+        if (versuch < 3) await pause(versuch * 3000);
+      }
     }
-    const aktuell = sitzung();
-    if (aktuell) {
-      const x = aktuell.seiten.find((y) => y.name === seite.name);
-      if (x) Object.assign(x, { status: eintrag.status, uuid: eintrag.uuid, fehler: eintrag.fehler });
-      sitzungSpeichern(aktuell);
-    }
+    eintragSetzen(seite.name, { status: "fehler", fehler: letzterFehler?.message || "Upload fehlgeschlagen" });
+    fortschritt.delete(seite.name);
     zeichne();
   });
   return warteschlange;
 }
-const blobs = new Map();
+// Nach dem Öffnen der App: unterbrochene Uploads aus dem Zwischenspeicher fortsetzen
+async function uploadsFortsetzen() {
+  const s = sitzung();
+  if (!s) return;
+  for (const x of s.seiten.filter((y) => y.status !== "ok")) {
+    const blob = await ablage.get(x.name);
+    if (blob) seiteHochladen({ name: x.name }, blob);
+    else eintragSetzen(x.name, { status: "fehler", fehler: "Foto nicht mehr vorhanden – bitte Seite antippen, löschen und neu fotografieren" });
+  }
+  zeichne();
+}
+// Nur die Statuszeile aktualisieren (Fortschritt), ohne die Seite neu aufzubauen
+function zeichneStatus() {
+  document.querySelectorAll("[data-upload-status]").forEach((el) => (el.textContent = uploadText()));
+}
+function uploadText() {
+  const s = sitzung();
+  if (!s) return "";
+  const offen = s.seiten.filter((x) => x.status === "wartet" || x.status === "laedt");
+  const laufend = s.seiten.find((x) => x.status === "laedt");
+  if (!offen.length) return s.seiten.some((x) => x.status === "fehler") ? "Upload-Problem" : "alles hochgeladen";
+  const p = laufend ? Math.round((fortschritt.get(laufend.name) || 0) * 100) : 0;
+  return `lädt ${offen.length} …${laufend ? ` (${p} %${laufend.versuch > 1 ? `, Versuch ${laufend.versuch}` : ""})` : ""}`;
+}
 
 async function fotoAufgenommen(dateien) {
   let s = sitzung();
@@ -185,23 +254,24 @@ async function seiteLoeschen(name) {
   }
   s.seiten = s.seiten.filter((y) => y.name !== name);
   sitzungSpeichern(s);
+  ablage.del(name);
   zeichne();
 }
 
 async function erneutVersuchen() {
   const s = sitzung();
   for (const x of s.seiten.filter((y) => y.status === "fehler")) {
-    const blob = blobs.get(x.name);
+    const blob = await ablage.get(x.name);
     if (blob) seiteHochladen({ name: x.name }, blob);
-    else meldung(`„${x.name}“ muss neu fotografiert werden (App wurde zwischendurch geschlossen).`);
+    else meldung(`„${x.name}“ muss neu fotografiert werden.`);
   }
 }
 
 async function abbrechen() {
   const s = sitzung();
   if (!s) return;
-  if (s.seiten.length && !confirm(`Aufnahme verwerfen? ${s.seiten.length} hochgeladene Seite(n) kommen in den Filen-Papierkorb.`)) return;
-  await warteschlange;
+  if (s.seiten.length && !confirm(`Aufnahme verwerfen? Bereits hochgeladene Seiten kommen in den Filen-Papierkorb.`)) return;
+  for (const x of s.seiten) ablage.del(x.name);
   for (const x of s.seiten) if (x.uuid) await (TEST ? TEST.papierkorb(x.uuid) : sdk().cloud().trashFile({ uuid: x.uuid })).catch(() => {});
   speicher.weg("pk_sitzung");
   ansicht = "start";
@@ -215,8 +285,10 @@ async function fertig() {
   lauf = { id: s.id, schritt: "hochladen", start: Date.now(), seiten: s.seiten.length, briefe: new Set(s.seiten.map((x) => x.b)).size };
   speicher.schreib("pk_lauf", lauf);
   zeichne();
+  const meinLauf = lauf;
   await warteschlange;
-  if (sitzung().seiten.some((x) => x.status !== "ok")) {
+  if (lauf !== meinLauf) return; // inzwischen abgebrochen
+  if (!sitzung() || sitzung().seiten.some((x) => x.status !== "ok")) {
     lauf = null;
     speicher.weg("pk_lauf");
     ansicht = "aufnahme";
@@ -244,7 +316,15 @@ async function fertig() {
 }
 
 // ---------- Verarbeitung beobachten ----------
+if (/[?&]reset\b/.test(location.search)) {
+  speicher.weg("pk_lauf");
+  speicher.weg("pk_sitzung");
+  history.replaceState(null, "", location.pathname);
+}
 let lauf = speicher.lies("pk_lauf");
+// Ein gespeicherter Lauf im Schritt "hochladen"/"starten" ist nach einem Neustart verwaist (dieser Teil läuft nur in der offenen App):
+// zurück zur Aufnahme, die Uploads laufen dort aus dem Zwischenspeicher weiter.
+if (lauf && ["hochladen", "starten"].includes(lauf.schritt)) { lauf = null; speicher.weg("pk_lauf"); }
 let beobachtet = false;
 async function beobachten() {
   if (beobachtet || !lauf) return;
@@ -392,9 +472,8 @@ function ansichtAufnahme() {
   const s = sitzung();
   if (!s) { ansicht = "start"; return ansichtStart(); }
   const briefe = [...new Set(s.seiten.map((x) => x.b).concat(s.brief))].sort((a, b) => a - b);
-  const offen = s.seiten.filter((x) => x.status === "wartet" || x.status === "laedt").length;
   const fehler = s.seiten.filter((x) => x.status === "fehler").length;
-  return `<header><h1>Brief ${s.brief}</h1><span class="klein">${s.seiten.length} Seite${s.seiten.length === 1 ? "" : "n"}${offen ? ` · lädt ${offen} …` : " · alles hochgeladen"}</span></header>
+  return `<header><h1>Brief ${s.brief}</h1><span class="klein">${s.seiten.length} Seite${s.seiten.length === 1 ? "" : "n"} · <span data-upload-status>${esc(uploadText())}</span></span></header>
   ${briefe.map((b) => {
     const seiten = s.seiten.filter((x) => x.b === b);
     return `<section class="brief ${b === s.brief ? "aktiv" : ""}"><h2>Brief ${b}${b === s.brief ? " (aktuell)" : ""}</h2>
@@ -402,7 +481,7 @@ function ansichtAufnahme() {
         ${x.vorschau ? `<img src="${x.vorschau}" alt="Seite ${i + 1}">` : `<span class="pdf">PDF</span>`}
         <span class="status">${x.status === "ok" ? "✓" : x.status === "fehler" ? "!" : "…"}</span></button>`).join("") || `<p class="klein">Noch keine Seite</p>`}</div></section>`;
   }).join("")}
-  ${fehler ? `<button class="warn" data-a="erneut">${fehler} Upload(s) fehlgeschlagen – erneut versuchen</button>` : ""}
+  ${fehler ? `<button class="warn" data-a="erneut">${fehler} Upload(s) fehlgeschlagen – erneut versuchen</button><p class="klein">${esc(s.seiten.find((x) => x.status === "fehler")?.fehler || "")}</p>` : ""}
   <div class="aktionen">
     <button class="gross" data-a="kamera">📷<span>${s.seiten.some((x) => x.b === s.brief) ? "Nächste Seite" : "Erste Seite"}</span></button>
     <div class="reihe">
@@ -447,6 +526,9 @@ function ansichtLauf() {
       ${e.fehler?.length ? `<div class="karte fehler"><strong>Nicht verarbeitet</strong><ul>${e.fehler.map((f) => `<li>${esc(f.name)}: ${esc(f.grund)}</li>`).join("")}</ul><p class="klein">Liegt im Ordner _Fehler.</p></div>` : ""}
       <button class="gross klein-gross" data-a="kamera-neu">📷<span>Weiteren Brief fotografieren</span></button>
       <button class="zweit" data-a="lauf-schliessen">Zur Übersicht</button>`;
+  } else if (lauf.schritt === "hochladen") {
+    unten = `<div class="karte"><strong data-upload-status>${esc(uploadText())}</strong><p class="klein">Bitte die App offen lassen, bis alle Fotos oben sind. Wird sie geschlossen, geht es beim nächsten Öffnen weiter.</p></div>
+      <button class="zweit" data-a="lauf-abbrechen">Abbrechen – zurück zur Aufnahme</button>`;
   } else {
     unten = `<p class="klein">Du kannst die App schließen – die Verarbeitung läuft weiter, das Ergebnis erscheint beim nächsten Öffnen.</p>`;
   }
@@ -522,6 +604,7 @@ const aktionen = {
   zurueck: () => { ansicht = "start"; zeichne(); ladeStand(); },
   "neu-laden": ladeStand,
   "zum-lauf": () => { ansicht = "lauf"; zeichne(); beobachten(); },
+  "lauf-abbrechen": () => { lauf = null; speicher.weg("pk_lauf"); ansicht = sitzung() ? "aufnahme" : "start"; zeichne(); meldung("Abgebrochen. Du kannst Seiten löschen, neu versuchen oder die Aufnahme verwerfen."); },
   "lauf-schliessen": () => { lauf = null; speicher.weg("pk_lauf"); ansicht = "start"; zeichne(); ladeStand(); },
   "erneut-starten": async () => {
     try {
@@ -577,7 +660,7 @@ document.addEventListener("click", (ev) => {
 
 // ---------- Start ----------
 zeichne();
-if (ansicht !== "einrichtung") ladeStand();
+if (ansicht !== "einrichtung") { ladeStand(); uploadsFortsetzen(); }
 if (lauf?.schritt === "warten") beobachten();
 setInterval(() => { if (ansicht === "lauf" && lauf?.schritt === "warten") zeichne(); }, 1000);
 document.addEventListener("visibilitychange", () => { if (!document.hidden && ansicht === "start") ladeStand(); });
