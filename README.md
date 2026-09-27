@@ -51,7 +51,7 @@ Fertig. Ab jetzt reicht: **Symbol → 📷 → Fertig**.
 
 ---
 
-## Update auf v1.5
+## Update auf v1.6
 
 Im Repo `MailCam` die Dateien `app.js` und `index.html` neu hochladen (bei einem Update von v1.3 oder älter zusätzlich `sw.js`). `opencv.js` muss nicht erneut hoch. Ab v1.4 kommen Updates beim nächsten Öffnen sofort an. Die installierte Version steht unten im Verarbeitungs-Bildschirm und unter ⚙️. Danach die App zweimal neu öffnen.
 
@@ -61,29 +61,26 @@ Im Repo `post-kamera` per **Add file → Upload files** diese Dateien neu hochla
 
 ## Kamera & Zuschneiden
 
-Du löst selbst aus. Die App erkennt danach das Blatt im Foto, schneidet es zu, zieht es gerade und macht es auf Wunsch weiß wie einen Scan.
+📷 öffnet immer die **Kamera-App des Handys**, also volle Foto-Qualität. Nach dem Foto erkennt MailCam das Blatt, schneidet es zu, zieht es gerade und macht es auf Wunsch weiß wie einen Scan. Wird ein Blatt erkannt, übernimmt die App die Seite nach 2 Sekunden automatisch.
 
-| Element | Funktion |
+| In der Prüfansicht | Funktion |
 |---|---|
-| Auslöser | Foto aufnehmen, wenn möglich in voller Kamera-Auflösung |
-| Prüfansicht | Zeigt die zugeschnittene Seite. **Wird ein Blatt erkannt, übernimmt die App sie nach 2 Sekunden automatisch**, und du kannst gleich die nächste Seite fotografieren. |
 | ↺ Neu | Foto verwerfen |
 | ⬚ Ecken anpassen | Die vier Ecken per Finger auf die Blattkanten ziehen |
-| Bild: Scan / Farbe | Scan: Schatten weg, Papier weiß (am besten für die Texterkennung). Farbe: nur gerade gezogen. |
-| 🔦 Licht | Taschenlampe, falls das Handy das im Browser erlaubt |
-| ➕ Nächster Brief | Die folgenden Seiten gehören zu einem neuen Brief |
+| 🎨 Farbe / 📄 Scan | Scan: Schatten und Knicke aufgehellt, Papier weiß (am besten für die Texterkennung). Farbe: nur gerade gezogen. |
+| ✓ Seite übernehmen | Sofort übernehmen, ohne die 2 Sekunden abzuwarten |
 
-**Handy-Kamera und Galerie:** Auch Fotos über „📱 Handy-Kamera“ oder „📎 Datei“ werden zugeschnitten. So bekommst du die volle Auflösung der Kamera-App. PDFs bleiben unverändert.
+**Die Erkennung kommt zurecht mit:** schrägen und gedrehten Blättern, starker Perspektive, hellen Tischen, Holz- und Stoffmaserung, weiteren Gegenständen im Bild, Knickfalten, einer vom Finger verdeckten Ecke und Briefen, die das Foto fast ganz ausfüllen.
 
-**Einstellungen (⚙️ → Kamera):** App-Kamera an/aus (aus = Kamera-App des Handys), automatisches Zuschneiden an/aus, Scan-Look an/aus.
+**Tipps:** Alle vier Ecken möglichst im Bild und nicht zu schräg von der Seite fotografieren. Das Zuschneiden lädt beim ersten Mal einmalig ca. 10 MB (`opencv.js`), das erste Foto dauert deshalb etwas länger.
 
-**Tipps:** Blatt auf eine dunklere Unterlage legen, alle vier Ecken im Bild, möglichst von oben fotografieren. Das Zuschneiden lädt beim ersten Mal einmalig ca. 10 MB (`opencv.js`).
+**Einstellungen (⚙️ → Kamera):** automatisches Zuschneiden an/aus, Scan-Look an/aus.
 
 ## Benutzung
 
 | Taste | Was passiert |
 |---|---|
-| 📷 **Brief fotografieren / Nächste Seite** | App-Kamera öffnet sich, jede übernommene Seite wird sofort hochgeladen (✓ am Vorschaubild) |
+| 📷 **Brief fotografieren / Nächste Seite** | Kamera-App des Handys öffnet sich, danach zuschneiden, jede übernommene Seite wird sofort hochgeladen (✓ am Vorschaubild) |
 | 📱 **Handy-Kamera** | Normale Kamera statt Scanner |
 | ➕ **Nächster Brief** | Alle folgenden Fotos gehören zu einem neuen Brief |
 | 📎 **Datei** | Vorhandenes Foto oder PDF auswählen |
@@ -116,6 +113,7 @@ Du kannst die App während der Verarbeitung schließen. Das Ergebnis erscheint b
 
 ## Versionen
 
+- **v1.6**: 📷 öffnet immer die Kamera-App des Handys (App-Kamera entfernt). Zuschneiden grundlegend verbessert: mehrere Erkennungswege (Helligkeit, Papierfarbe, Kanten, Struktur), Bewertung nach Papieranteil, verdeckte Ecken werden rekonstruiert, Kanten werden fein nachjustiert, Blatt am Bildrand wird korrekt behandelt, A4-Proportion, Knickschatten werden aufgehellt. Im Test: 8 von 8 schwierigen Fotos exakt (v1.5: 4 von 8). Schnellere Vorschau.
 - **v1.5**: Kamera ohne Live-Erkennung: selbst auslösen, danach erkennt die App das Blatt im Foto und schneidet es zu (Übernahme nach 2 s). Auch Fotos aus Handy-Kamera und Galerie werden zugeschnitten. Foto in voller Kamera-Auflösung, wo das Handy es erlaubt.
 - **v1.4**: Updates kommen sofort an (kein veralteter Zwischenspeicher mehr); im Verarbeitungs-Bildschirm gibt es immer einen Ausweg („Nicht warten – zur Übersicht“); Versionsanzeige.
 - **v1.3**: Knopf „Abbrechen“ beim Hochladen; „Aufnahme verwerfen“ geht auch bei hängendem Upload; nach einem Neustart landet die App nicht mehr im Hochlade-Bildschirm; Notausgang `?reset`.

@@ -1,9 +1,9 @@
 // Post-Kamera – fotografiert Briefe direkt in den Filen-Eingang, startet die Verarbeitung
 // und zeigt, was daraus geworden ist (Dateien, Fristen, To-dos).
 import { FilenSDK } from "@filen/sdk";
-import { ladeOpenCV, Scanner, fotoZuschneiden } from "./scanner.js";
+import { ladeOpenCV, fotoZuschneiden } from "./scanner.js";
 
-const VERSION = "1.5";
+const VERSION = "1.6";
 const WORKFLOW = "post-archiv.yml";
 const $ = (s) => document.querySelector(s);
 // Nur für automatische Tests: ersetzt Filen und GitHub durch Attrappen. Im normalen Betrieb nicht vorhanden.
@@ -441,7 +441,6 @@ function ansichtEinrichtung() {
   </section>
   <section class="karte">
     <h2>3 · Kamera</h2>
-    <label class="schalter"><input type="checkbox" id="sc-an" ${scanEinst().an ? "checked" : ""}> App-Kamera verwenden (bleibt in der App, schnell für mehrere Seiten). Aus: Kamera-App des Handys.</label>
     <label class="schalter"><input type="checkbox" id="sc-zu" ${scanEinst().zuschneiden ? "checked" : ""}> Blatt im Foto erkennen und automatisch zuschneiden</label>
     <label class="schalter"><input type="checkbox" id="sc-scan" ${scanEinst().scan ? "checked" : ""}> Scan-Look (Schatten entfernen, weißes Papier)</label>
     <p class="klein">Das Zuschneiden lädt beim ersten Mal einmalig ca. 10 MB.</p>
@@ -487,9 +486,6 @@ function ansichtAufnahme() {
     <div class="reihe">
       <button class="zweit" data-a="naechster">➕ Nächster Brief</button>
       <button class="zweit" data-a="datei">📎 Datei</button>
-    </div>
-    <div class="reihe">
-      <button class="zweit" data-a="handykamera">📱 Handy-Kamera</button>
     </div>
     <button class="fertig" data-a="fertig" ${s.seiten.length ? "" : "disabled"}>✅ Fertig – verarbeiten</button>
     <button class="link" data-a="abbrechen">Aufnahme verwerfen</button>
@@ -544,7 +540,8 @@ function zeichne() {
 }
 
 // ---------- Aktionen ----------
-const kameraInput = Object.assign(document.createElement("input"), { type: "file", accept: "image/*", capture: "environment", hidden: true });
+const kameraInput = Object.assign(document.createElement("input"), { type: "file", accept: "image/*", hidden: true });
+kameraInput.setAttribute("capture", "environment"); // öffnet direkt die Rückkamera statt der Dateiauswahl
 const dateiInput = Object.assign(document.createElement("input"), { type: "file", accept: "image/*,application/pdf", multiple: true, hidden: true });
 document.body.append(kameraInput, dateiInput);
 for (const inp of [kameraInput, dateiInput]) {
@@ -576,44 +573,16 @@ for (const inp of [kameraInput, dateiInput]) {
   });
 }
 
-// ---------- Scanner ----------
-let scanner = null;
-async function kameraOeffnen() {
-  if (!scanEinst().an || !navigator.mediaDevices?.getUserMedia) return kameraInput.click();
-  if (scanner) return;
-  meldung("Kamera wird gestartet …");
-  try {
-    const { cv } = await ladeOpenCV();
-    scanner = new Scanner({
-      cv,
-      einstellungen: scanEinst,
-      speichereEinstellungen: scanEinstSpeichern,
-      status: () => { const s = sitzung(); return { brief: s?.brief || 1, seitenImBrief: s ? s.seiten.filter((x) => x.b === s.brief).length : 0 }; },
-      onSeite: async (blob) => { ansicht = "aufnahme"; await fotoAufgenommen([new File([blob], "scan.jpg", { type: "image/jpeg", lastModified: Date.now() })]); },
-      onNaechsterBrief: () => { const s = sitzung(); if (!s || !s.seiten.some((x) => x.b === s.brief)) { scanner.hinweis("Erst eine Seite aufnehmen"); return false; } naechsterBrief(); return true; },
-      onSchliessen: () => { scanner = null; if (sitzung()) ansicht = "aufnahme"; zeichne(); },
-    });
-    meldungText = "";
-    await scanner.starten();
-  } catch (e) {
-    scanner?.beenden();
-    scanner = null;
-    const grund = /Permission|NotAllowed/i.test(e.name + e.message) ? "Kamera-Zugriff wurde nicht erlaubt" : e.message;
-    meldung(`Scanner nicht verfügbar (${grund}) – normale Kamera wird geöffnet.`);
-    kameraInput.click();
-  }
-}
 // Scanner-Bibliothek im Hintergrund vorladen, damit der erste Start schnell geht (nicht im Datensparmodus)
 function vorladen() {
-  if (!scanEinst().an || navigator.connection?.saveData) return;
+  if (!scanEinst().zuschneiden || navigator.connection?.saveData) return;
   const los = () => fetch("opencv.js").catch(() => {});
   "requestIdleCallback" in window ? requestIdleCallback(los, { timeout: 5000 }) : setTimeout(los, 3000);
 }
 
 const aktionen = {
-  kamera: () => kameraOeffnen(),
-  handykamera: () => kameraInput.click(),
-  "kamera-neu": () => { lauf = null; speicher.weg("pk_lauf"); kameraOeffnen(); },
+  kamera: () => kameraInput.click(),
+  "kamera-neu": () => { lauf = null; speicher.weg("pk_lauf"); kameraInput.click(); },
   datei: () => dateiInput.click(),
   naechster: naechsterBrief,
   loeschen: (el) => seiteLoeschen(el.dataset.name),
@@ -648,7 +617,7 @@ const aktionen = {
     const e = einst();
     e.ordner = $("#f-ordner").value.trim() || "/Dokumente";
     if (!e.ordner.startsWith("/")) e.ordner = "/" + e.ordner;
-    scanEinstSpeichern({ ...scanEinst(), an: $("#sc-an").checked, zuschneiden: $("#sc-zu").checked, scan: $("#sc-scan").checked });
+    scanEinstSpeichern({ ...scanEinst(), zuschneiden: $("#sc-zu").checked, scan: $("#sc-scan").checked });
     e.github = { owner: $("#g-owner").value.trim(), repo: $("#g-repo").value.trim() || "post-archiv", token: $("#g-token").value.trim() };
     speicher.schreib("pk_einstellungen", e);
     _eingangUuid = null;
