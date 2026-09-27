@@ -54,6 +54,11 @@ ul.liste li>div{flex:1;min-width:0;overflow-wrap:anywhere}
 button.haken{flex:none;width:34px;height:34px;padding:0;margin:0;border-radius:50%;background:transparent;border:2px solid var(--akzent);color:var(--akzent);font-size:1rem;line-height:1}
 button.haken:active{background:var(--akzent);color:var(--akzent-t)}
 .todo-zeile.fertig>div{opacity:.6;text-decoration:line-through}
+.dok-klein{padding:0!important;display:block!important}
+.dok-klein details{width:100%}.dok-klein summary{list-style:none;cursor:pointer;padding:10px 12px}.dok-klein summary::-webkit-details-marker{display:none}
+.dk-kopf{display:flex;gap:8px;align-items:baseline;min-width:0}.dk-kopf strong{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:0 1 auto;min-width:0}.dk-kopf span{color:var(--leise);font-size:.9rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1 1 0;min-width:0}
+.dok-klein details>p,.dok-klein details>.datei{margin:0 12px 10px}.dok-klein details>p{font-size:.95rem}
+.hinweis{background:var(--gelb-bg);color:var(--gelb);border-radius:12px;padding:10px 12px;font-size:.92rem}
 details.erledigt{margin-top:8px}details.erledigt summary{color:var(--leise);cursor:pointer;padding:6px 0}
 .brief{background:var(--karte);border:1px solid var(--linie);border-radius:16px;padding:12px;margin:10px 0}
 .brief.aktiv{border-color:var(--akzent);box-shadow:0 0 0 1px var(--akzent)}
