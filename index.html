@@ -50,6 +50,11 @@ input{display:block;width:100%;margin-top:4px;padding:12px;border-radius:10px;bo
 .liste li{display:flex;gap:10px;align-items:flex-start;min-width:0;background:var(--karte);border:1px solid var(--linie);border-radius:12px;padding:10px 12px;margin:6px 0}
 ul.liste li>div{flex:1;min-width:0;overflow-wrap:anywhere}
 .liste li.frist{flex-direction:column;gap:4px}
+.todo-zeile{align-items:center!important}
+button.haken{flex:none;width:34px;height:34px;padding:0;margin:0;border-radius:50%;background:transparent;border:2px solid var(--akzent);color:var(--akzent);font-size:1rem;line-height:1}
+button.haken:active{background:var(--akzent);color:var(--akzent-t)}
+.todo-zeile.fertig>div{opacity:.6;text-decoration:line-through}
+details.erledigt{margin-top:8px}details.erledigt summary{color:var(--leise);cursor:pointer;padding:6px 0}
 .brief{background:var(--karte);border:1px solid var(--linie);border-radius:16px;padding:12px;margin:10px 0}
 .brief.aktiv{border-color:var(--akzent);box-shadow:0 0 0 1px var(--akzent)}
 .seiten{display:flex;gap:8px;overflow-x:auto;padding-bottom:4px}
