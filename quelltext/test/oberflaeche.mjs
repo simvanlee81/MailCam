@@ -8,7 +8,7 @@ const page = await ctx.newPage();
 const fehler = [];
 page.on("pageerror", (e) => fehler.push(e.message));
 await page.addInitScript(() => {
-  localStorage.setItem("pk_scanner", JSON.stringify({ an: false }));
+  localStorage.setItem("pk_scanner", JSON.stringify({ an: false, zuschneiden: false }));
   const heute = new Date();
   const tag = (n) => new Date(heute.getTime() + n * 86400000).toISOString().slice(0, 10);
   let ergebnisVersuche = 0;

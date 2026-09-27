@@ -10,7 +10,7 @@ page.on("pageerror", (e) => fehler.push(e.message));
 await ctx.addInitScript(() => {
   localStorage.setItem("pk_filen", JSON.stringify({ email: "t@x.de" }));
   localStorage.setItem("pk_einstellungen", JSON.stringify({ ordner: "/Dokumente", github: { owner: "x", repo: "post-archiv", token: "t" } }));
-  localStorage.setItem("pk_scanner", JSON.stringify({ an: false }));
+  localStorage.setItem("pk_scanner", JSON.stringify({ an: false, zuschneiden: false }));
   const modus = sessionStorage.getItem("modus") || "wackelig";
   window.PK_TEST = { versuche: 0, hochgeladen: [],
     async hochladen(d, onP) {

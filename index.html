@@ -86,9 +86,11 @@ body.scanner-offen{overflow:hidden}
 .sc-klein.an b{background:#3ddc84;color:#000}
 .sc-klein.an{color:#ffd54f}
 .sc-ausloeser{width:78px;height:78px;border-radius:50%;padding:0;margin:0;background:#fff;position:relative;flex:0 0 auto}
-.sc-ausloeser svg{position:absolute;inset:-6px;width:90px;height:90px;transform:rotate(-90deg)}
-.sc-ausloeser .ring{fill:none;stroke:#fff5;stroke-width:5}
-.sc-ausloeser .fortschritt{fill:none;stroke:#3ddc84;stroke-width:6;stroke-dasharray:289;stroke-dashoffset:289;transition:stroke-dashoffset .12s linear}
+.sc-ausloeser{box-shadow:0 0 0 5px #000,0 0 0 9px #fff}
+.sc-ausloeser:active{transform:scale(.92)}
+.sc-ausloeser.arbeitet{background:#3ddc84;animation:puls 1s ease-in-out infinite}
+@keyframes puls{50%{opacity:.5}}
+.sc-klein-platz{width:64px}
 .sc-fertig{background:#fff2;color:#fff;margin:4px 16px calc(12px + env(safe-area-inset-bottom));width:auto}
 .sc-pruefen{position:absolute;inset:0;background:#111;display:flex;flex-direction:column;padding:max(12px,env(safe-area-inset-top)) 14px calc(14px + env(safe-area-inset-bottom));gap:8px}
 .sc-vorschau{flex:1;min-height:0;display:flex;align-items:center;justify-content:center}

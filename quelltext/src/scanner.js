@@ -185,214 +185,81 @@ function scanLook(cv, rgba) {
   return farbe;
 }
 
-// ---------- Live-Scanner ----------
-// Öffnet eine Vollbild-Kamera. onSeite(blob) wird für jede übernommene Seite aufgerufen.
-export class Scanner {
-  constructor({ cv, onSeite, onNaechsterBrief, onSchliessen, status, einstellungen, speichereEinstellungen }) {
-    Object.assign(this, { cv, onSeite, onNaechsterBrief, onSchliessen, status, einstellungen, speichereEinstellungen });
-    this.verlauf = [];
-    this.letzteAufnahme = null;
-    this.pause = false;
-    this.aktiv = false;
+// ---------- Bild vorbereiten ----------
+const MAX_SEITE = 3200; // größere Fotos werden verkleinert (reicht für Briefe, schont den Speicher)
+
+async function alsCanvas(quelle) {
+  const bild = quelle instanceof Blob ? await createImageBitmap(quelle, { imageOrientation: "from-image" }) : quelle;
+  const w = bild.videoWidth || bild.width, h = bild.videoHeight || bild.height;
+  const f = Math.min(1, MAX_SEITE / Math.max(w, h));
+  const c = document.createElement("canvas");
+  c.width = Math.round(w * f);
+  c.height = Math.round(h * f);
+  c.getContext("2d").drawImage(bild, 0, 0, c.width, c.height);
+  bild.close?.();
+  return c;
+}
+
+// Blatt im fertigen Foto suchen (auf 1000 px verkleinert, Ecken zurückgerechnet)
+function eckenImFoto(cv, roh) {
+  const s = 1000 / Math.max(roh.width, roh.height);
+  const m = document.createElement("canvas");
+  m.width = Math.round(roh.width * s);
+  m.height = Math.round(roh.height * s);
+  m.getContext("2d").drawImage(roh, 0, 0, m.width, m.height);
+  const e = findePapier(cv, m);
+  return e ? e.map((p) => ({ x: p.x / s, y: p.y / s })) : null;
+}
+
+// ---------- Prüfen & Zuschneiden (für App-Kamera und Handy-Fotos) ----------
+// Zeigt die zugeschnittene Seite. Ergebnis: { blob } bei Übernehmen, null bei "Neu"/Abbrechen.
+class Pruefer {
+  constructor({ cv, huelle, einstellungen, speichereEinstellungen }) {
+    Object.assign(this, { cv, huelle, einstellungen, speichereEinstellungen });
   }
 
-  async starten() {
-    this.el = document.createElement("div");
-    this.el.className = "scanner";
-    this.el.innerHTML = `
-      <div class="sc-oben"><button class="sc-x" data-s="schliessen" aria-label="Schließen">✕</button><span class="sc-info"></span></div>
-      <div class="sc-bild"><video playsinline muted autoplay></video><canvas class="sc-overlay"></canvas><span class="sc-hinweis"></span></div>
-      <div class="sc-unten">
-        <button class="sc-klein" data-s="licht" hidden>🔦<span>Licht</span></button>
-        <button class="sc-klein" data-s="auto"><b></b><span>Auto</span></button>
-        <button class="sc-ausloeser" data-s="ausloesen" aria-label="Aufnehmen"><svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="46" class="ring"/><circle cx="50" cy="50" r="46" class="fortschritt"/></svg></button>
-        <button class="sc-klein" data-s="modus"><b></b><span>Bild</span></button>
-        <button class="sc-klein" data-s="brief">➕<span>Nächster Brief</span></button>
-      </div>
-      <button class="sc-fertig" data-s="schliessen">Fertig mit Fotografieren</button>
-      <div class="sc-pruefen" hidden></div>`;
-    document.body.append(this.el);
-    document.body.classList.add("scanner-offen");
-    this.video = this.el.querySelector("video");
-    this.overlay = this.el.querySelector(".sc-overlay");
-    this.klein = document.createElement("canvas");
-    this.el.addEventListener("click", (e) => { const b = e.target.closest("[data-s]"); if (b && !b.disabled) this.aktion(b.dataset.s, b); });
-    this.zeigeKnoepfe();
-
-    this.stream = await navigator.mediaDevices.getUserMedia({
-      audio: false,
-      video: { facingMode: { ideal: "environment" }, width: { ideal: 3840 }, height: { ideal: 3840 } },
-    });
-    this.video.srcObject = this.stream;
-    await this.video.play().catch(() => {});
-    await new Promise((r) => (this.video.videoWidth ? r() : this.video.addEventListener("loadedmetadata", r, { once: true })));
-    this.spur = this.stream.getVideoTracks()[0];
-    try {
-      const f = this.spur.getCapabilities?.() || {};
-      if (f.torch) this.el.querySelector("[data-s=licht]").hidden = false;
-      if (f.focusMode?.includes("continuous")) await this.spur.applyConstraints({ advanced: [{ focusMode: "continuous" }] });
-    } catch {}
-    this.aktiv = true;
-    this.schleife();
+  zeige(roh) {
+    const ecken = eckenImFoto(this.cv, roh);
+    this.aufnahme = { roh, ecken: ecken || [{ x: 0, y: 0 }, { x: roh.width, y: 0 }, { x: roh.width, y: roh.height }, { x: 0, y: roh.height }], erkannt: !!ecken, bearbeitet: false };
+    return new Promise((resolve) => { this.fertig = resolve; this.darstellen(); });
   }
 
-  zeigeKnoepfe() {
-    const e = this.einstellungen();
-    this.el.querySelector("[data-s=auto] b").textContent = e.auto ? "AN" : "AUS";
-    this.el.querySelector("[data-s=auto]").classList.toggle("an", e.auto);
-    this.el.querySelector("[data-s=modus] b").textContent = e.scan ? "Scan" : "Farbe";
-    const s = this.status();
-    this.el.querySelector(".sc-info").textContent = `Brief ${s.brief} · ${s.seitenImBrief} Seite${s.seitenImBrief === 1 ? "" : "n"}`;
-  }
-
-  hinweis(t) { this.el.querySelector(".sc-hinweis").textContent = t || ""; }
-
-  // Erkennung ~8x pro Sekunde auf einem verkleinerten Bild
-  // Erkennung passt sich dem Handy an: nach jeder Messung mindestens doppelt so lange Pause, wie sie gedauert hat
-  // (so bleibt immer mindestens die Hälfte der Rechenzeit für Anzeige, Verschlüsselung und Upload frei)
-  schleife() {
-    const takt = () => {
-      if (!this.aktiv) return;
-      let dauer = 0;
-      if (!this.pause && this.video.videoWidth && !document.hidden) {
-        const t0 = performance.now();
-        try { this.erkenne(); } catch (e) { console.warn(e); }
-        dauer = performance.now() - t0;
-        this.messdauer = this.messdauer ? this.messdauer * 0.7 + dauer * 0.3 : dauer;
-      }
-      setTimeout(takt, Math.max(130, (this.messdauer || 0) * 2));
-    };
-    setTimeout(takt, 200);
-  }
-
-  erkenne() {
-    const vw = this.video.videoWidth, vh = this.video.videoHeight;
-    const s = 480 / Math.max(vw, vh);
-    this.klein.width = Math.round(vw * s);
-    this.klein.height = Math.round(vh * s);
-    this.klein.getContext("2d", { willReadFrequently: true }).drawImage(this.video, 0, 0, this.klein.width, this.klein.height);
-    const e = findePapier(this.cv, this.klein);
-    const ecken = e ? e.map((p) => ({ x: p.x / s, y: p.y / s })) : null;
-    this.aktuelleEcken = ecken;
-    const diag = Math.hypot(vw, vh);
-
-    // Stabilität: Ecken bewegen sich kaum über mehrere Messungen
-    if (ecken) {
-      const vorher = this.verlauf[this.verlauf.length - 1];
-      const ruhig = vorher && ecken.every((p, i) => abstand(p, vorher[i]) < diag * 0.012);
-      this.verlauf = ruhig ? [...this.verlauf, ecken].slice(-12) : [ecken];
-    } else {
-      this.verlauf = [];
-    }
-    // Nach einer Aufnahme erst wieder auslösen, wenn eine andere Seite im Bild ist
-    if (this.letzteAufnahme) {
-      if (!ecken) { if (++this.leerZaehler > 3) this.letzteAufnahme = null; }
-      else if (ecken.some((p, i) => abstand(p, this.letzteAufnahme[i]) > diag * 0.08)) this.letzteAufnahme = null;
-      else this.leerZaehler = 0;
-    }
-    // ca. 1 Sekunde ruhig (mindestens 3 Messungen)
-    const ruhigMs = this.verlauf.length > 1 ? this.verlauf.length * Math.max(130, (this.messdauer || 0) * 2 + (this.messdauer || 0)) : 0;
-    const fortschritt = this.einstellungen().auto && !this.letzteAufnahme && this.verlauf.length >= 2 ? Math.min(1, ruhigMs / 1100) * (this.verlauf.length >= 3 ? 1 : 0.6) : 0;
-    this.zeichneOverlay(ecken, fortschritt);
-    if (!ecken) this.hinweis("Seite ins Bild halten");
-    else if (this.letzteAufnahme) this.hinweis("Nächste Seite hinlegen");
-    else if (this.einstellungen().auto) this.hinweis(fortschritt < 1 ? "Ruhig halten …" : "");
-    else this.hinweis("Seite erkannt – auslösen");
-    if (fortschritt >= 1) this.ausloesen(true);
-  }
-
-  // Overlay passend zum Video (object-fit: contain)
-  zeichneOverlay(ecken, fortschritt) {
-    const box = this.overlay.getBoundingClientRect();
-    const dpr = window.devicePixelRatio || 1;
-    if (this.overlay.width !== Math.round(box.width * dpr)) { this.overlay.width = Math.round(box.width * dpr); this.overlay.height = Math.round(box.height * dpr); }
-    const g = this.overlay.getContext("2d");
-    g.clearRect(0, 0, this.overlay.width, this.overlay.height);
-    const ring = this.el.querySelector(".fortschritt");
-    ring.style.strokeDashoffset = String(289 * (1 - fortschritt));
-    if (!ecken) return;
-    const vw = this.video.videoWidth, vh = this.video.videoHeight;
-    const s = Math.min(this.overlay.width / vw, this.overlay.height / vh);
-    const ox = (this.overlay.width - vw * s) / 2, oy = (this.overlay.height - vh * s) / 2;
-    g.beginPath();
-    ecken.forEach((p, i) => (i ? g.lineTo(ox + p.x * s, oy + p.y * s) : g.moveTo(ox + p.x * s, oy + p.y * s)));
-    g.closePath();
-    const farbe = this.letzteAufnahme ? "rgba(255,255,255,.7)" : "#3ddc84";
-    g.fillStyle = this.letzteAufnahme ? "rgba(255,255,255,.08)" : "rgba(61,220,132,.18)";
-    g.fill();
-    g.lineWidth = 3 * dpr;
-    g.strokeStyle = farbe;
-    g.stroke();
-    g.fillStyle = farbe;
-    for (const p of ecken) { g.beginPath(); g.arc(ox + p.x * s, oy + p.y * s, 6 * dpr, 0, Math.PI * 2); g.fill(); }
-  }
-
-  // Aktuelles Kamerabild in voller Auflösung festhalten
-  async ausloesen(automatisch) {
-    if (this.pause) return;
-    this.pause = true;
-    const vw = this.video.videoWidth, vh = this.video.videoHeight;
-    const roh = document.createElement("canvas");
-    roh.width = vw;
-    roh.height = vh;
-    roh.getContext("2d").drawImage(this.video, 0, 0, vw, vh);
-    this.el.classList.add("blitz");
-    setTimeout(() => this.el.classList.remove("blitz"), 180);
-    navigator.vibrate?.(30);
-    // Ecken im festgehaltenen Bild noch einmal genauer suchen (1000 px)
-    let ecken = this.aktuelleEcken;
-    try {
-      const s = 1000 / Math.max(vw, vh);
-      const mittel = document.createElement("canvas");
-      mittel.width = Math.round(vw * s);
-      mittel.height = Math.round(vh * s);
-      mittel.getContext("2d").drawImage(roh, 0, 0, mittel.width, mittel.height);
-      const genau = findePapier(this.cv, mittel);
-      if (genau) ecken = genau.map((p) => ({ x: p.x / s, y: p.y / s }));
-    } catch {}
-    const erkannt = !!ecken;
-    if (!ecken) ecken = [{ x: 0, y: 0 }, { x: vw, y: 0 }, { x: vw, y: vh }, { x: 0, y: vh }];
-    this.pruefen({ roh, ecken, erkannt, automatisch });
-  }
-
-  // Ergebnis anzeigen: übernehmen, Ecken anpassen oder neu
-  pruefen(aufnahme) {
-    this.aufnahme = aufnahme;
-    const p = this.el.querySelector(".sc-pruefen");
-    const bild = entzerren(this.cv, aufnahme.roh, aufnahme.ecken, { scan: this.einstellungen().scan });
-    this.ergebnis = bild;
+  darstellen() {
+    const a = this.aufnahme;
+    const p = this.huelle;
+    clearInterval(this.countdown);
+    this.ergebnis = entzerren(this.cv, a.roh, a.ecken, { scan: this.einstellungen().scan });
     p.hidden = false;
     p.innerHTML = `<div class="sc-vorschau"></div>
-      ${aufnahme.erkannt ? "" : '<p class="sc-warn">Keine Seite erkannt – ganzes Bild übernommen. Mit „Ecken anpassen“ zuschneiden.</p>'}
+      ${a.erkannt ? "" : '<p class="sc-warn">Kein Blatt erkannt – ganzes Foto übernommen. Mit „Ecken anpassen“ zuschneiden.</p>'}
       <div class="sc-reihe">
-        <button class="sc-zweit" data-s="neu">↺ Neu</button>
-        <button class="sc-zweit" data-s="ecken">⬚ Ecken anpassen</button>
-        <button class="sc-zweit" data-s="modus-pruefen">${this.einstellungen().scan ? "🎨 Farbe" : "📄 Scan"}</button>
+        <button class="sc-zweit" data-p="neu">↺ Neu</button>
+        <button class="sc-zweit" data-p="ecken">⬚ Ecken anpassen</button>
+        <button class="sc-zweit" data-p="modus">${this.einstellungen().scan ? "🎨 Farbe" : "📄 Scan"}</button>
       </div>
-      <button class="sc-ok" data-s="uebernehmen">✓ Seite übernehmen</button>`;
-    bild.className = "sc-ergebnis";
-    p.querySelector(".sc-vorschau").append(bild);
-    // Automatik: nach 3 s selbst übernehmen, außer man tippt vorher etwas an
-    clearInterval(this.countdown);
-    if (aufnahme.automatisch && aufnahme.erkannt && !aufnahme.bearbeitet) {
-      let rest = 3;
-      const k = p.querySelector("[data-s=uebernehmen]");
+      <button class="sc-ok" data-p="ok">✓ Seite übernehmen</button>`;
+    this.ergebnis.className = "sc-ergebnis";
+    p.querySelector(".sc-vorschau").append(this.ergebnis);
+    p.onclick = (e) => { const b = e.target.closest("[data-p]"); if (b && !b.disabled) this.aktion(b.dataset.p, b); };
+    // Blatt erkannt und nichts angefasst: nach 2 s automatisch übernehmen
+    if (a.erkannt && !a.bearbeitet) {
+      let rest = 2;
+      const k = p.querySelector("[data-p=ok]");
       k.textContent = `✓ Übernehme in ${rest} …`;
       this.countdown = setInterval(() => {
         rest--;
         if (rest > 0) k.textContent = `✓ Übernehme in ${rest} …`;
-        else { clearInterval(this.countdown); if (!k.disabled) { k.disabled = true; this.uebernehmen(); } }
+        else { clearInterval(this.countdown); if (!k.disabled) this.aktion("ok", k); }
       }, 1000);
     }
   }
 
-  // Ecken per Finger verschieben
   eckenAnpassen() {
     const { roh } = this.aufnahme;
-    const ecken = this.aufnahme.ecken.map((p) => ({ ...p }));
-    const p = this.el.querySelector(".sc-pruefen");
+    const ecken = this.aufnahme.ecken.map((q) => ({ ...q }));
+    const p = this.huelle;
     p.innerHTML = `<p class="sc-info2">Ecken auf die Blattkanten ziehen</p><div class="sc-edit"><canvas></canvas></div>
-      <div class="sc-reihe"><button class="sc-zweit" data-s="ecken-abbrechen">Abbrechen</button><button class="sc-ok" data-s="ecken-ok">✓ Zuschneiden</button></div>`;
+      <div class="sc-reihe"><button class="sc-zweit" data-p="ecken-abbrechen">Abbrechen</button><button class="sc-ok" data-p="ecken-ok">✓ Zuschneiden</button></div>`;
     const c = p.querySelector("canvas");
     const box = p.querySelector(".sc-edit").getBoundingClientRect();
     const dpr = window.devicePixelRatio || 1;
@@ -403,14 +270,14 @@ export class Scanner {
     c.height = Math.round(roh.height * s * dpr);
     const g = c.getContext("2d");
     const k = s * dpr;
+    const pfad = () => { g.beginPath(); ecken.forEach((q, i) => (i ? g.lineTo(q.x * k, q.y * k) : g.moveTo(q.x * k, q.y * k))); g.closePath(); };
     const zeichne = () => {
       g.drawImage(roh, 0, 0, c.width, c.height);
-      g.fillStyle = "rgba(0,0,0,.35)";
+      g.fillStyle = "rgba(0,0,0,.4)";
       g.beginPath(); g.rect(0, 0, c.width, c.height);
       ecken.forEach((q, i) => (i ? g.lineTo(q.x * k, q.y * k) : g.moveTo(q.x * k, q.y * k)));
       g.closePath(); g.fill("evenodd");
-      g.beginPath(); ecken.forEach((q, i) => (i ? g.lineTo(q.x * k, q.y * k) : g.moveTo(q.x * k, q.y * k))); g.closePath();
-      g.lineWidth = 2 * dpr; g.strokeStyle = "#3ddc84"; g.stroke();
+      pfad(); g.lineWidth = 2 * dpr; g.strokeStyle = "#3ddc84"; g.stroke();
       for (const q of ecken) {
         g.beginPath(); g.arc(q.x * k, q.y * k, 16 * dpr, 0, Math.PI * 2); g.fillStyle = "rgba(61,220,132,.35)"; g.fill();
         g.lineWidth = 3 * dpr; g.strokeStyle = "#fff"; g.stroke();
@@ -435,51 +302,157 @@ export class Scanner {
     this.eckenEdit = ecken;
   }
 
-  async uebernehmen() {
-    const blob = await new Promise((r) => this.ergebnis.toBlob(r, "image/jpeg", 0.9));
-    this.letzteAufnahme = this.aufnahme.ecken.length ? this.aktuelleEcken || this.aufnahme.ecken : null;
-    this.leerZaehler = 0;
-    this.verlauf = [];
-    this.schliessePruefen();
-    await this.onSeite(blob);
-    this.zeigeKnoepfe();
+  async aktion(was, knopf) {
+    if (was !== "ok") { clearInterval(this.countdown); this.aufnahme.bearbeitet = true; }
+    const e = this.einstellungen();
+    switch (was) {
+      case "ok": {
+        clearInterval(this.countdown);
+        knopf.disabled = true;
+        const blob = await new Promise((r) => this.ergebnis.toBlob(r, "image/jpeg", 0.9));
+        return this.schliessen({ blob });
+      }
+      case "neu": return this.schliessen(null);
+      case "modus": e.scan = !e.scan; this.speichereEinstellungen(e); return this.darstellen();
+      case "ecken": return this.eckenAnpassen();
+      case "ecken-abbrechen": return this.darstellen();
+      case "ecken-ok": this.aufnahme.ecken = sortiereEcken(this.eckenEdit); this.aufnahme.erkannt = true; return this.darstellen();
+    }
   }
 
-  schliessePruefen() {
-    const p = this.el.querySelector(".sc-pruefen");
-    p.hidden = true;
-    p.innerHTML = "";
-    this.aufnahme = null;
-    this.pause = false;
+  schliessen(ergebnis) {
     clearInterval(this.countdown);
+    this.huelle.hidden = true;
+    this.huelle.innerHTML = "";
+    this.huelle.onclick = null;
+    const f = this.fertig;
+    this.fertig = null;
+    f?.(ergebnis);
+  }
+}
+
+// Ein Foto aus der Handy-Kamera oder Galerie zuschneiden (Vollbild-Dialog)
+export async function fotoZuschneiden({ cv, datei, einstellungen, speichereEinstellungen }) {
+  const el = document.createElement("div");
+  el.className = "scanner";
+  el.innerHTML = `<div class="sc-pruefen"><p class="sc-info2">Wird zugeschnitten …</p></div>`;
+  document.body.append(el);
+  document.body.classList.add("scanner-offen");
+  try {
+    const roh = await alsCanvas(datei);
+    const pr = new Pruefer({ cv, huelle: el.querySelector(".sc-pruefen"), einstellungen, speichereEinstellungen });
+    return await pr.zeige(roh);
+  } finally {
+    el.remove();
+    if (!document.querySelector(".scanner")) document.body.classList.remove("scanner-offen");
+  }
+}
+
+// ---------- App-Kamera: selbst auslösen, danach automatisch zuschneiden ----------
+export class Scanner {
+  constructor({ cv, onSeite, onNaechsterBrief, onSchliessen, status, einstellungen, speichereEinstellungen }) {
+    Object.assign(this, { cv, onSeite, onNaechsterBrief, onSchliessen, status, einstellungen, speichereEinstellungen });
+    this.beschaeftigt = false;
+  }
+
+  async starten() {
+    this.el = document.createElement("div");
+    this.el.className = "scanner";
+    this.el.innerHTML = `
+      <div class="sc-oben"><button class="sc-x" data-s="schliessen" aria-label="Schließen">✕</button><span class="sc-info"></span></div>
+      <div class="sc-bild"><video playsinline muted autoplay></video><span class="sc-hinweis">Brief ins Bild halten und auslösen</span></div>
+      <div class="sc-unten">
+        <button class="sc-klein" data-s="licht" hidden>🔦<span>Licht</span></button>
+        <button class="sc-klein" data-s="modus"><b></b><span>Bild</span></button>
+        <button class="sc-ausloeser" data-s="ausloesen" aria-label="Aufnehmen"></button>
+        <button class="sc-klein" data-s="brief">➕<span>Nächster Brief</span></button>
+        <span class="sc-klein-platz"></span>
+      </div>
+      <button class="sc-fertig" data-s="schliessen">Fertig mit Fotografieren</button>
+      <div class="sc-pruefen" hidden></div>`;
+    document.body.append(this.el);
+    document.body.classList.add("scanner-offen");
+    this.video = this.el.querySelector("video");
+    this.pruefer = new Pruefer({ cv: this.cv, huelle: this.el.querySelector(".sc-pruefen"), einstellungen: this.einstellungen, speichereEinstellungen: this.speichereEinstellungen });
+    this.el.addEventListener("click", (e) => { const b = e.target.closest("[data-s]"); if (b && !b.disabled) this.aktion(b.dataset.s, b); });
+    this.zeigeKnoepfe();
+
+    this.stream = await navigator.mediaDevices.getUserMedia({
+      audio: false,
+      video: { facingMode: { ideal: "environment" }, width: { ideal: 3840 }, height: { ideal: 3840 } },
+    });
+    this.video.srcObject = this.stream;
+    await this.video.play().catch(() => {});
+    await new Promise((r) => (this.video.videoWidth ? r() : this.video.addEventListener("loadedmetadata", r, { once: true })));
+    this.spur = this.stream.getVideoTracks()[0];
+    try { if ("ImageCapture" in window) this.fotoapparat = new ImageCapture(this.spur); } catch {}
+    try {
+      const f = this.spur.getCapabilities?.() || {};
+      if (f.torch) this.el.querySelector("[data-s=licht]").hidden = false;
+      if (f.focusMode?.includes("continuous")) await this.spur.applyConstraints({ advanced: [{ focusMode: "continuous" }] });
+    } catch {}
+  }
+
+  zeigeKnoepfe() {
+    const e = this.einstellungen();
+    this.el.querySelector("[data-s=modus] b").textContent = e.scan ? "Scan" : "Farbe";
+    const s = this.status();
+    this.el.querySelector(".sc-info").textContent = `Brief ${s.brief} · ${s.seitenImBrief} Seite${s.seitenImBrief === 1 ? "" : "n"}`;
+  }
+
+  hinweis(t) { this.el.querySelector(".sc-hinweis").textContent = t || ""; }
+
+  // Foto in voller Auflösung (ImageCapture), sonst Einzelbild aus dem Kamerabild
+  async foto() {
+    if (this.fotoapparat) {
+      try {
+        const blob = await Promise.race([this.fotoapparat.takePhoto(), new Promise((_, j) => setTimeout(() => j(new Error("zu langsam")), 5000))]);
+        return await alsCanvas(blob);
+      } catch { this.fotoapparat = null; } // Gerät kann es nicht – ab jetzt Einzelbild
+    }
+    return alsCanvas(this.video);
+  }
+
+  async ausloesen() {
+    if (this.beschaeftigt) return;
+    this.beschaeftigt = true;
+    const k = this.el.querySelector("[data-s=ausloesen]");
+    k.classList.add("arbeitet");
+    this.el.classList.add("blitz");
+    setTimeout(() => this.el.classList.remove("blitz"), 150);
+    navigator.vibrate?.(25);
+    try {
+      const roh = await this.foto();
+      const ergebnis = await this.pruefer.zeige(roh);
+      if (ergebnis?.blob) {
+        await this.onSeite(ergebnis.blob);
+        this.zeigeKnoepfe();
+        this.hinweis("Nächste Seite hinlegen und auslösen");
+      }
+    } catch (e) {
+      this.hinweis(`Fehler: ${e.message}`);
+    } finally {
+      k.classList.remove("arbeitet");
+      this.beschaeftigt = false;
+    }
   }
 
   async aktion(was, knopf) {
     const e = this.einstellungen();
-    if (this.aufnahme && was !== "uebernehmen") { clearInterval(this.countdown); this.aufnahme.bearbeitet = true; }
     switch (was) {
-      case "ausloesen": return this.ausloesen(false);
-      case "auto": e.auto = !e.auto; this.speichereEinstellungen(e); this.verlauf = []; return this.zeigeKnoepfe();
+      case "ausloesen": return this.ausloesen();
       case "modus": e.scan = !e.scan; this.speichereEinstellungen(e); return this.zeigeKnoepfe();
       case "licht": {
         this.licht = !this.licht;
         try { await this.spur.applyConstraints({ advanced: [{ torch: this.licht }] }); } catch {}
         return knopf.classList.toggle("an", this.licht);
       }
-      case "brief": { const ok = this.onNaechsterBrief(); if (ok !== false) { this.letzteAufnahme = null; this.zeigeKnoepfe(); this.hinweis("Neuer Brief – erste Seite"); } return; }
-      case "neu": this.letzteAufnahme = null; return this.schliessePruefen();
-      case "ecken": return this.eckenAnpassen();
-      case "ecken-abbrechen": return this.pruefen(this.aufnahme);
-      case "ecken-ok": this.aufnahme.ecken = sortiereEcken(this.eckenEdit); this.aufnahme.erkannt = true; return this.pruefen(this.aufnahme);
-      case "modus-pruefen": e.scan = !e.scan; this.speichereEinstellungen(e); this.zeigeKnoepfe(); return this.pruefen(this.aufnahme);
-      case "uebernehmen": knopf.disabled = true; return this.uebernehmen();
+      case "brief": { if (this.onNaechsterBrief() !== false) { this.zeigeKnoepfe(); this.hinweis("Neuer Brief – erste Seite auslösen"); } return; }
       case "schliessen": return this.beenden();
     }
   }
 
   beenden() {
-    this.aktiv = false;
-    clearInterval(this.countdown);
     try { if (this.licht) this.spur.applyConstraints({ advanced: [{ torch: false }] }); } catch {}
     this.stream?.getTracks().forEach((t) => t.stop());
     this.el?.remove();

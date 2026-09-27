@@ -51,39 +51,39 @@ Fertig. Ab jetzt reicht: **Symbol → 📷 → Fertig**.
 
 ---
 
-## Update auf v1.4
+## Update auf v1.5
 
-Im Repo `MailCam` die Dateien `app.js`, `index.html` und `sw.js` neu hochladen. `opencv.js` muss nicht erneut hoch. Ab v1.4 kommen Updates beim nächsten Öffnen sofort an. Die installierte Version steht unten im Verarbeitungs-Bildschirm und unter ⚙️. Danach die App zweimal neu öffnen.
+Im Repo `MailCam` die Dateien `app.js` und `index.html` neu hochladen (bei einem Update von v1.3 oder älter zusätzlich `sw.js`). `opencv.js` muss nicht erneut hoch. Ab v1.4 kommen Updates beim nächsten Öffnen sofort an. Die installierte Version steht unten im Verarbeitungs-Bildschirm und unter ⚙️. Danach die App zweimal neu öffnen.
 
 ## Update von v1.0 auf v1.1
 
 Im Repo `post-kamera` per **Add file → Upload files** diese Dateien neu hochladen: `app.js`, `index.html`, `sw.js` und die neue **`opencv.js`**. Danach die App auf dem Handy einmal schließen und neu öffnen, beim zweiten Start ist die neue Version aktiv. Am Post-Archiv ändert sich nichts.
 
-## Scanner
+## Kamera & Zuschneiden
+
+Du löst selbst aus. Die App erkennt danach das Blatt im Foto, schneidet es zu, zieht es gerade und macht es auf Wunsch weiß wie einen Scan.
 
 | Element | Funktion |
 |---|---|
-| Grüner Rahmen | Erkanntes Blatt. Der Ring am Auslöser füllt sich, solange das Blatt ruhig liegt. |
-| **Auto AN/AUS** | AN: löst automatisch aus und übernimmt die Seite nach 3 Sekunden. Tippst du vorher auf „Neu“ oder „Ecken anpassen“, wird nichts übernommen. |
-| Auslöser | Manuell aufnehmen, geht auch ohne erkanntes Blatt |
-| **Bild: Scan / Farbe** | Scan: Schatten weg, Papier weiß, Schrift kräftig (am besten für die Texterkennung). Farbe: nur gerade gezogen, für Fotos und farbige Formulare. |
+| Auslöser | Foto aufnehmen, wenn möglich in voller Kamera-Auflösung |
+| Prüfansicht | Zeigt die zugeschnittene Seite. **Wird ein Blatt erkannt, übernimmt die App sie nach 2 Sekunden automatisch**, und du kannst gleich die nächste Seite fotografieren. |
+| ↺ Neu | Foto verwerfen |
+| ⬚ Ecken anpassen | Die vier Ecken per Finger auf die Blattkanten ziehen |
+| Bild: Scan / Farbe | Scan: Schatten weg, Papier weiß (am besten für die Texterkennung). Farbe: nur gerade gezogen. |
 | 🔦 Licht | Taschenlampe, falls das Handy das im Browser erlaubt |
 | ➕ Nächster Brief | Die folgenden Seiten gehören zu einem neuen Brief |
-| Ecken anpassen | Die vier Ecken per Finger auf die Blattkanten ziehen |
 
-Nach einer Aufnahme wartet der Scanner, bis eine **andere** Seite im Bild liegt. So wird dieselbe Seite nicht doppelt aufgenommen.
+**Handy-Kamera und Galerie:** Auch Fotos über „📱 Handy-Kamera“ oder „📎 Datei“ werden zugeschnitten. So bekommst du die volle Auflösung der Kamera-App. PDFs bleiben unverändert.
 
-**Tipps für eine gute Erkennung:** Blatt auf eine dunklere oder gemusterte Unterlage legen, alle vier Ecken im Bild, nicht zu schräg von der Seite fotografieren. Auch Weiß auf hellem Tisch klappt meist. Wenn nicht, hilft „Ecken anpassen“.
+**Einstellungen (⚙️ → Kamera):** App-Kamera an/aus (aus = Kamera-App des Handys), automatisches Zuschneiden an/aus, Scan-Look an/aus.
 
-Beim ersten Öffnen lädt der Scanner einmalig die Bilderkennung (ca. 10 MB), danach startet er sofort. Unter ⚙️ → Scanner kannst du ihn ausschalten. Dann öffnet sich wieder die normale Handy-Kamera. In der Aufnahme-Ansicht gibt es außerdem immer den Knopf **📱 Handy-Kamera**.
-
-**Hinweis zur Bildqualität:** Der Scanner nutzt das Live-Bild der Kamera, meist 4K. Das ist für Briefe mehr als genug, aber etwas weniger als ein normales Foto. Für sehr kleine Schrift nimmst du die Handy-Kamera.
+**Tipps:** Blatt auf eine dunklere Unterlage legen, alle vier Ecken im Bild, möglichst von oben fotografieren. Das Zuschneiden lädt beim ersten Mal einmalig ca. 10 MB (`opencv.js`).
 
 ## Benutzung
 
 | Taste | Was passiert |
 |---|---|
-| 📷 **Brief fotografieren / Nächste Seite** | Scanner öffnet sich, jede übernommene Seite wird sofort hochgeladen (✓ am Vorschaubild) |
+| 📷 **Brief fotografieren / Nächste Seite** | App-Kamera öffnet sich, jede übernommene Seite wird sofort hochgeladen (✓ am Vorschaubild) |
 | 📱 **Handy-Kamera** | Normale Kamera statt Scanner |
 | ➕ **Nächster Brief** | Alle folgenden Fotos gehören zu einem neuen Brief |
 | 📎 **Datei** | Vorhandenes Foto oder PDF auswählen |
@@ -116,6 +116,7 @@ Du kannst die App während der Verarbeitung schließen. Das Ergebnis erscheint b
 
 ## Versionen
 
+- **v1.5**: Kamera ohne Live-Erkennung: selbst auslösen, danach erkennt die App das Blatt im Foto und schneidet es zu (Übernahme nach 2 s). Auch Fotos aus Handy-Kamera und Galerie werden zugeschnitten. Foto in voller Kamera-Auflösung, wo das Handy es erlaubt.
 - **v1.4**: Updates kommen sofort an (kein veralteter Zwischenspeicher mehr); im Verarbeitungs-Bildschirm gibt es immer einen Ausweg („Nicht warten – zur Übersicht“); Versionsanzeige.
 - **v1.3**: Knopf „Abbrechen“ beim Hochladen; „Aufnahme verwerfen“ geht auch bei hängendem Upload; nach einem Neustart landet die App nicht mehr im Hochlade-Bildschirm; Notausgang `?reset`.
 - **v1.2**: Uploads mit Zeitlimit, automatischer Wiederholung und Fortschrittsanzeige; nicht hochgeladene Seiten bleiben auf dem Handy gespeichert und werden nach einem Neustart weiter hochgeladen; die Seitenerkennung im Scanner passt sich der Geschwindigkeit des Handys an und lässt Rechenzeit für den Upload frei.

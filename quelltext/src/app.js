@@ -1,9 +1,9 @@
 // Post-Kamera – fotografiert Briefe direkt in den Filen-Eingang, startet die Verarbeitung
 // und zeigt, was daraus geworden ist (Dateien, Fristen, To-dos).
 import { FilenSDK } from "@filen/sdk";
-import { ladeOpenCV, Scanner } from "./scanner.js";
+import { ladeOpenCV, Scanner, fotoZuschneiden } from "./scanner.js";
 
-const VERSION = "1.4";
+const VERSION = "1.5";
 const WORKFLOW = "post-archiv.yml";
 const $ = (s) => document.querySelector(s);
 // Nur für automatische Tests: ersetzt Filen und GitHub durch Attrappen. Im normalen Betrieb nicht vorhanden.
@@ -18,7 +18,7 @@ const speicher = {
   weg(k) { try { localStorage.removeItem(k); } catch {} },
 };
 const einst = () => speicher.lies("pk_einstellungen", { ordner: "/Dokumente", github: { repo: "post-archiv" } });
-const scanEinst = () => ({ an: true, auto: true, scan: true, ...speicher.lies("pk_scanner", {}) });
+const scanEinst = () => ({ an: true, zuschneiden: true, scan: true, ...speicher.lies("pk_scanner", {}) });
 const scanEinstSpeichern = (e) => speicher.schreib("pk_scanner", e);
 
 // ---------- Filen ----------
@@ -440,11 +440,11 @@ function ansichtEinrichtung() {
     <button data-a="speichern">Speichern & testen</button>
   </section>
   <section class="karte">
-    <h2>3 · Scanner</h2>
-    <label class="schalter"><input type="checkbox" id="sc-an" ${scanEinst().an ? "checked" : ""}> Live-Scanner mit Seitenerkennung verwenden</label>
-    <label class="schalter"><input type="checkbox" id="sc-auto" ${scanEinst().auto ? "checked" : ""}> Automatisch auslösen, wenn die Seite ruhig liegt</label>
+    <h2>3 · Kamera</h2>
+    <label class="schalter"><input type="checkbox" id="sc-an" ${scanEinst().an ? "checked" : ""}> App-Kamera verwenden (bleibt in der App, schnell für mehrere Seiten). Aus: Kamera-App des Handys.</label>
+    <label class="schalter"><input type="checkbox" id="sc-zu" ${scanEinst().zuschneiden ? "checked" : ""}> Blatt im Foto erkennen und automatisch zuschneiden</label>
     <label class="schalter"><input type="checkbox" id="sc-scan" ${scanEinst().scan ? "checked" : ""}> Scan-Look (Schatten entfernen, weißes Papier)</label>
-    <p class="klein">Beim ersten Öffnen lädt der Scanner einmalig ca. 10 MB. Aus: normale Handy-Kamera.</p>
+    <p class="klein">Das Zuschneiden lädt beim ersten Mal einmalig ca. 10 MB.</p>
   </section>
   ${e.github?.token && angemeldet ? `<button class="zweit" data-a="zurueck">Zurück</button>` : ""}
   <p class="klein mitte">Version ${VERSION}</p>`;
@@ -470,7 +470,7 @@ function ansichtStart() {
 
 function ansichtAufnahme() {
   const s = sitzung();
-  if (!s) { ansicht = "start"; return ansichtStart(); }
+  if (!s) return ansichtStart(); // (noch) keine Aufnahme – Startseite zeigen, Ansicht aber nicht umstellen
   const briefe = [...new Set(s.seiten.map((x) => x.b).concat(s.brief))].sort((a, b) => a - b);
   const fehler = s.seiten.filter((x) => x.status === "fehler").length;
   return `<header><h1>Brief ${s.brief}</h1><span class="klein">${s.seiten.length} Seite${s.seiten.length === 1 ? "" : "n"} · <span data-upload-status>${esc(uploadText())}</span></span></header>
@@ -553,7 +553,25 @@ for (const inp of [kameraInput, dateiInput]) {
     inp.value = "";
     if (!dateien.length) return;
     ansicht = "aufnahme";
-    await fotoAufgenommen(dateien);
+    zeichne();
+    // Fotos zuschneiden (PDFs bleiben unverändert)
+    if (scanEinst().zuschneiden && dateien.some((d) => d.type.startsWith("image/"))) {
+      let cv = null;
+      try { ({ cv } = await ladeOpenCV()); } catch (e) { meldung(`Zuschneiden nicht verfügbar (${e.message}) – Foto wird unverändert übernommen.`); }
+      for (const d of dateien) {
+        if (!cv || !d.type.startsWith("image/")) { await fotoAufgenommen([d]); continue; }
+        try {
+          const r = await fotoZuschneiden({ cv, datei: d, einstellungen: scanEinst, speichereEinstellungen: scanEinstSpeichern });
+          if (r?.blob) await fotoAufgenommen([new File([r.blob], "scan.jpg", { type: "image/jpeg", lastModified: Date.now() })]);
+        } catch (e) {
+          meldung(`Zuschneiden fehlgeschlagen (${e.message}) – Foto wird unverändert übernommen.`);
+          await fotoAufgenommen([d]);
+        }
+        zeichne();
+      }
+    } else {
+      await fotoAufgenommen(dateien);
+    }
     zeichne();
   });
 }
@@ -563,7 +581,7 @@ let scanner = null;
 async function kameraOeffnen() {
   if (!scanEinst().an || !navigator.mediaDevices?.getUserMedia) return kameraInput.click();
   if (scanner) return;
-  meldung("Scanner wird geladen …");
+  meldung("Kamera wird gestartet …");
   try {
     const { cv } = await ladeOpenCV();
     scanner = new Scanner({
@@ -630,7 +648,7 @@ const aktionen = {
     const e = einst();
     e.ordner = $("#f-ordner").value.trim() || "/Dokumente";
     if (!e.ordner.startsWith("/")) e.ordner = "/" + e.ordner;
-    scanEinstSpeichern({ ...scanEinst(), an: $("#sc-an").checked, auto: $("#sc-auto").checked, scan: $("#sc-scan").checked });
+    scanEinstSpeichern({ ...scanEinst(), an: $("#sc-an").checked, zuschneiden: $("#sc-zu").checked, scan: $("#sc-scan").checked });
     e.github = { owner: $("#g-owner").value.trim(), repo: $("#g-repo").value.trim() || "post-archiv", token: $("#g-token").value.trim() };
     speicher.schreib("pk_einstellungen", e);
     _eingangUuid = null;

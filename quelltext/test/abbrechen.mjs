@@ -10,7 +10,7 @@ page.on("dialog", (d) => d.accept());
 await ctx.addInitScript(() => {
   localStorage.setItem("pk_filen", JSON.stringify({ email: "t@x.de" }));
   localStorage.setItem("pk_einstellungen", JSON.stringify({ ordner: "/Dokumente", github: { owner: "x", repo: "post-archiv", token: "t" } }));
-  localStorage.setItem("pk_scanner", JSON.stringify({ an: false }));
+  localStorage.setItem("pk_scanner", JSON.stringify({ an: false, zuschneiden: false }));
   window.PK_TEST = { hochladen: () => new Promise(() => {}), async papierkorb() {}, async github() { return {}; }, async liesJson() { throw new Error("not found"); } };
 });
 await page.goto(url);
