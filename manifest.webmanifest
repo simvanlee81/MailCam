@@ -2,6 +2,7 @@
   "name": "Post-Kamera",
   "short_name": "Post",
   "description": "Briefe fotografieren und automatisch im Filen-Archiv ablegen",
+  "id": "./",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

@@ -51,9 +51,9 @@ Fertig. Ab jetzt reicht: **Symbol → 📷 → Fertig**.
 
 ---
 
-## Update auf v1.6
+## Update auf v2.3
 
-Im Repo `MailCam` die Dateien `app.js` und `index.html` neu hochladen (bei einem Update von v1.3 oder älter zusätzlich `sw.js`). `opencv.js` muss nicht erneut hoch. Ab v1.4 kommen Updates beim nächsten Öffnen sofort an. Die installierte Version steht unten im Verarbeitungs-Bildschirm und unter ⚙️. Danach die App zweimal neu öffnen.
+Im Repo `MailCam` die Dateien `app.js`, `index.html` und `manifest.webmanifest` neu hochladen (von v1.3 oder älter zusätzlich `sw.js`). Wer von v2.1 oder älter kommt, braucht außerdem Post-Archiv v3.3.
 
 ## Update von v1.0 auf v1.1
 
@@ -61,20 +61,21 @@ Im Repo `post-kamera` per **Add file → Upload files** diese Dateien neu hochla
 
 ## Kamera & Zuschneiden
 
-📷 öffnet immer die **Kamera-App des Handys**, also volle Foto-Qualität. Nach dem Foto erkennt MailCam das Blatt, schneidet es zu, zieht es gerade und macht es auf Wunsch weiß wie einen Scan. Wird ein Blatt erkannt, übernimmt die App die Seite nach 2 Sekunden automatisch.
+📷 öffnet immer die **Kamera-App des Handys**, also volle Foto-Qualität. Nach dem Foto erkennt MailCam das Blatt, schneidet es zu, zieht es gerade und macht es auf Wunsch weiß wie einen Scan. Die Seite wird **automatisch richtig herum gedreht** (erkannt an der Schrift: Zeilenrichtung, linksbündiger Rand sowie Ober- und Unterlängen). Die Drehung gilt für Farbe und Scan-Look gleichermaßen. Die Prüfansicht bleibt offen, bis du auf **✓ Seite übernehmen** tippst.
 
 | In der Prüfansicht | Funktion |
 |---|---|
 | ↺ Neu | Foto verwerfen |
 | ⬚ Ecken anpassen | Die vier Ecken per Finger auf die Blattkanten ziehen |
+| ⟳ Drehen | Seite um 90° drehen (falls die automatische Ausrichtung einmal danebenliegt) |
 | 🎨 Farbe / 📄 Scan | Scan: Schatten und Knicke aufgehellt, Papier weiß (am besten für die Texterkennung). Farbe: nur gerade gezogen. |
-| ✓ Seite übernehmen | Sofort übernehmen, ohne die 2 Sekunden abzuwarten |
+| ✓ Seite übernehmen | Seite speichern und hochladen |
 
 **Die Erkennung kommt zurecht mit:** schrägen und gedrehten Blättern, starker Perspektive, hellen Tischen, Holz- und Stoffmaserung, weiteren Gegenständen im Bild, Knickfalten, einer vom Finger verdeckten Ecke und Briefen, die das Foto fast ganz ausfüllen.
 
 **Tipps:** Alle vier Ecken möglichst im Bild und nicht zu schräg von der Seite fotografieren. Das Zuschneiden lädt beim ersten Mal einmalig ca. 10 MB (`opencv.js`), das erste Foto dauert deshalb etwas länger.
 
-**Einstellungen (⚙️ → Kamera):** automatisches Zuschneiden an/aus, Scan-Look an/aus.
+**Einstellungen (⚙️ → Kamera):** automatisches Zuschneiden an/aus, Scan-Look an/aus. Die Schalter gelten sofort.
 
 ## Benutzung
 
@@ -86,8 +87,13 @@ Im Repo `post-kamera` per **Add file → Upload files** diese Dateien neu hochla
 | 📎 **Datei** | Vorhandenes Foto oder PDF auswählen |
 | Vorschaubild antippen | Seite löschen (z. B. verwackelt) |
 | ✅ **Fertig – verarbeiten** | Startet die Verarbeitung und zeigt nach 2–4 Minuten das Ergebnis |
+| ◯ neben einem To-do | Als erledigt markieren. Es wandert in die aufklappbare Liste **Erledigt**, dort holt ↩︎ es zurück. |
 
 Du kannst die App während der Verarbeitung schließen. Das Ergebnis erscheint beim nächsten Öffnen. Tippst du nie auf „Fertig“, verarbeitet der normale Zeitplan die Fotos nach spätestens 2 Stunden trotzdem.
+
+## To-dos abhaken
+
+Unter **Zu erledigen** hat jeder Eintrag rechts einen Kreis. Antippen = erledigt. Der Haken gilt sofort in der App und wird in Filen gespeichert (`Dokumente/_system/erledigt`), also auch auf anderen Geräten sichtbar. Beim nächsten Lauf des Post-Archivs (spätestens nach ein paar Stunden) wird er fest übernommen: `Übersicht.md` und `Dokumente-Index.md` zeigen das To-do dann als erledigt, und für das Dokument kommen keine Frist-Erinnerungen per Mail mehr. Die Liste **Erledigt** zeigt die letzten 10.
 
 ## Datenschutz
 
@@ -113,6 +119,13 @@ Du kannst die App während der Verarbeitung schließen. Das Ergebnis erscheint b
 
 ## Versionen
 
+- **v2.3**: Neuer Bereich ⚙️ → „4 · Als App installieren“: Installations-Knopf in Chrome/Edge/Samsung Internet, Anleitung für iPhone/Safari und Firefox, Anzeige „läuft als installierte App“. Zusätzliche Meta-Tags für Homescreen-Symbol und Titel; feste App-ID im Manifest.
+- **v2.2**: „Zuletzt archiviert“ als kleine Karten (Absender, Typ, Datum, Kategorie, Betrag), antippen zeigt Zusammenfassung und Datei; keine Warn-/To-do-Kästen mehr in dieser Liste; 8 statt 5 Einträge; Hinweis, wenn die KI nicht verfügbar ist (z. B. Guthaben leer). Braucht Post-Archiv v3.3.
+- **v2.1**: Stammt die To-do-Liste noch von einem älteren Post-Archiv, startet die App beim Abhaken selbst einen kurzen Lauf, der sie erneuert (statt nur einen Hinweis zu zeigen). Braucht Post-Archiv v3.2.
+- **v2.0**: To-dos abhaken und wieder öffnen (braucht Post-Archiv v3.1).
+- **v1.9**: Prüfansicht schließt sich nicht mehr von selbst (kein automatisches Übernehmen). Ausrichtung deutlich zuverlässiger: zusätzlich wird der linksbündige Textrand ausgewertet, und die Erkennung läuft auf einer größeren Fassung der Seite; im Test auch bei unscharfen, kleinen Fotos 158 von 160 richtig (v1.8: 134 von 160). Absicherung für Browser, die die Drehangabe im Foto (EXIF) nicht anwenden.
+- **v1.8**: Automatische Ausrichtung (0°/90°/180°/270°) anhand der Schrift, im Test 70 von 70 Seiten richtig; neuer Knopf „⟳ Drehen“ in der Prüfansicht.
+- **v1.7**: Kamera-Schalter (Zuschneiden, Scan-Look) werden sofort gespeichert – „Zurück“ setzt sie nicht mehr zurück.
 - **v1.6**: 📷 öffnet immer die Kamera-App des Handys (App-Kamera entfernt). Zuschneiden grundlegend verbessert: mehrere Erkennungswege (Helligkeit, Papierfarbe, Kanten, Struktur), Bewertung nach Papieranteil, verdeckte Ecken werden rekonstruiert, Kanten werden fein nachjustiert, Blatt am Bildrand wird korrekt behandelt, A4-Proportion, Knickschatten werden aufgehellt. Im Test: 8 von 8 schwierigen Fotos exakt (v1.5: 4 von 8). Schnellere Vorschau.
 - **v1.5**: Kamera ohne Live-Erkennung: selbst auslösen, danach erkennt die App das Blatt im Foto und schneidet es zu (Übernahme nach 2 s). Auch Fotos aus Handy-Kamera und Galerie werden zugeschnitten. Foto in voller Kamera-Auflösung, wo das Handy es erlaubt.
 - **v1.4**: Updates kommen sofort an (kein veralteter Zwischenspeicher mehr); im Verarbeitungs-Bildschirm gibt es immer einen Ausweg („Nicht warten – zur Übersicht“); Versionsanzeige.

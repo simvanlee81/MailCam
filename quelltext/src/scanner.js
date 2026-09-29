@@ -345,7 +345,7 @@ function einruecken(e, anteil) {
 }
 
 // ---------- Entzerren & aufhellen ----------
-export function entzerren(cv, quelle, ecken, { scan = true, maxSeite = 2480 } = {}) {
+export function entzerren(cv, quelle, ecken, { scan = true, maxSeite = 2480, drehung = 0 } = {}) {
   const [tl, tr, br, bl] = ecken;
   let w = Math.max(abstand(tl, tr), abstand(bl, br));
   let h = Math.max(abstand(tl, bl), abstand(tr, br));
@@ -368,11 +368,126 @@ export function entzerren(cv, quelle, ecken, { scan = true, maxSeite = 2480 } = 
   cv.warpPerspective(src, aus, M, new cv.Size(w, h), cv.INTER_LINEAR, cv.BORDER_REPLICATE);
   let ergebnis = aus;
   if (scan) ergebnis = scanLook(cv, aus);
+  if (drehung) {
+    const gedreht = new cv.Mat();
+    cv.rotate(ergebnis, gedreht, { 90: cv.ROTATE_90_CLOCKWISE, 180: cv.ROTATE_180, 270: cv.ROTATE_90_COUNTERCLOCKWISE }[drehung]);
+    if (ergebnis !== aus) ergebnis.delete();
+    ergebnis = gedreht;
+  }
   const canvas = document.createElement("canvas");
   cv.imshow(canvas, ergebnis);
   [src, von, nach, M, aus].forEach((m) => m.delete());
   if (ergebnis !== aus) ergebnis.delete();
   return canvas;
+}
+
+// ---------- Textausrichtung ----------
+// Liefert die nötige Drehung im Uhrzeigersinn (0, 90, 180, 270), damit die Schrift aufrecht steht.
+// 1) Laufen die Zeilen waagerecht oder senkrecht? (Zeilen erzeugen ein stark schwankendes Profil quer zur Schrift)
+// 2) Oben oder unten? Oberlängen (b d f h k l t, Großbuchstaben, Umlautpunkte) sind im Deutschen deutlich häufiger als
+//    Unterlängen (g j p q y) – liegt mehr "Tinte" unter dem Zeilenkern als darüber, steht die Seite auf dem Kopf.
+export function textAusrichtung(cv, quelle) {
+  const src = cv.imread(quelle);
+  const grau = new cv.Mat();
+  cv.cvtColor(src, grau, cv.COLOR_RGBA2GRAY);
+  const s = Math.min(1, 1400 / Math.max(grau.cols, grau.rows));
+  if (s < 1) cv.resize(grau, grau, new cv.Size(Math.round(grau.cols * s), Math.round(grau.rows * s)), 0, 0, cv.INTER_AREA);
+  const tinte = new cv.Mat();
+  cv.adaptiveThreshold(grau, tinte, 255, cv.ADAPTIVE_THRESH_MEAN_C, cv.THRESH_BINARY_INV, 25, 18);
+  // Rand (Schatten, Lochung, Tischreste) ignorieren
+  const r = Math.round(Math.min(tinte.cols, tinte.rows) * 0.04);
+  const innen = tinte.roi(new cv.Rect(r, r, tinte.cols - 2 * r, tinte.rows - 2 * r));
+
+  const profil = (m, richtung) => {
+    const out = new cv.Mat();
+    cv.reduce(m, out, richtung, cv.REDUCE_SUM, cv.CV_32S);
+    const a = Array.from(out.data32S);
+    out.delete();
+    return a;
+  };
+  // Leserichtung: Schrift in beide Richtungen "verschmieren" – in Leserichtung verschmelzen Buchstaben zu wenigen Zeilen
+  const teile = (kx, ky) => {
+    const m = new cv.Mat(), lab = new cv.Mat();
+    const k = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(kx, ky));
+    cv.dilate(innen, m, k);
+    const n = cv.connectedComponents(m, lab, 8, cv.CV_32S);
+    [m, lab, k].forEach((x) => x.delete());
+    return n;
+  };
+  const breite = Math.max(9, Math.round(Math.max(innen.cols, innen.rows) * 0.012));
+  const waagerecht = teile(breite, 1) <= teile(1, breite);
+
+  // Oben/unten an einem Zeilenprofil entscheiden (Zeilen verlaufen waagerecht)
+  const obenUnten = (p) => {
+    let ober = 0, unter = 0, n = 0;
+    const max = Math.max(...p);
+    if (!max) return 0;
+    let i = 0;
+    while (i < p.length) {
+      if (p[i] < max * 0.04) { i++; continue; }
+      let j = i;
+      while (j < p.length && p[j] >= max * 0.04) j++;
+      const zeile = p.slice(i, j);
+      const zmax = Math.max(...zeile);
+      if (j - i >= 6 && j - i < p.length * 0.08) {
+        const kern = zeile.map((v, k) => (v >= zmax * 0.5 ? k : -1)).filter((k) => k >= 0);
+        const a = kern[0], b = kern[kern.length - 1];
+        for (let k = 0; k < a; k++) ober += zeile[k];
+        for (let k = b + 1; k < zeile.length; k++) unter += zeile[k];
+        n++;
+      }
+      i = j;
+    }
+    if (n < 3 || ober + unter === 0) return 0;
+    return (ober - unter) / (ober + unter); // > 0: aufrecht, < 0: auf dem Kopf
+  };
+
+  // Zweites Merkmal: Briefe sind linksbündig – viele Zeilen beginnen an derselben Stelle, die Zeilenenden flattern.
+  // Steht die Seite auf dem Kopf, ist es umgekehrt. Robust auch bei unscharfen Fotos, weil nur Zeilen-Umrisse zählen.
+  const buendig = (m) => {
+    const d = new cv.Mat(), lab = new cv.Mat(), st = new cv.Mat(), ce = new cv.Mat();
+    const k = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(breite, 1));
+    cv.dilate(m, d, k);
+    const n = cv.connectedComponentsWithStats(d, lab, st, ce, 8, cv.CV_32S);
+    const links = [], rechts = [];
+    const W = m.cols, H = m.rows;
+    for (let i = 1; i < n; i++) {
+      const x = st.intAt(i, 0), y = st.intAt(i, 1), w = st.intAt(i, 2), h = st.intAt(i, 3);
+      // nur Textzeilen: flach, nicht winzig, nicht die ganze Seite
+      if (w < W * 0.12 || h < 4 || h > H * 0.05 || w < h * 4) continue;
+      links.push(x); rechts.push(x + w);
+    }
+    [d, lab, st, ce, k].forEach((x) => x.delete());
+    const tol = Math.max(3, W * 0.01);
+    const cluster = (a) => { let best = 0; for (const v of a) { let c = 0; for (const u of a) if (Math.abs(u - v) <= tol) c++; best = Math.max(best, c); } return best; };
+    return { links: cluster(links), rechts: cluster(rechts), zeilen: links.length };
+  };
+  // > 0: aufrecht, < 0: auf dem Kopf (für waagerechte Zeilen)
+  const urteil = (m) => {
+    const w1 = obenUnten(profil(m, 1));
+    const b = buendig(m);
+    const w2 = b.zeilen >= 4 ? (b.links - b.rechts) / Math.max(4, b.links, b.rechts) : 0;
+    // Bündigkeit ist das stärkere Signal, wenn eindeutig; sonst Ober-/Unterlängen
+    const wert = Math.abs(w2) >= 0.2 ? w2 * 2 + w1 : w1 * 3 + w2;
+    return { wert, w1, w2, ...b };
+  };
+
+  let drehung = 0;
+  if (waagerecht) {
+    const u = urteil(innen);
+    textAusrichtung.letzte = u;
+    drehung = u.wert < -0.15 ? 180 : 0;
+  } else {
+    // Zeilen senkrecht: 90° im Uhrzeigersinn drehen und dann oben/unten prüfen
+    const gedreht = new cv.Mat();
+    cv.rotate(innen, gedreht, cv.ROTATE_90_CLOCKWISE);
+    const u = urteil(gedreht);
+    textAusrichtung.letzte = u;
+    gedreht.delete();
+    drehung = u.wert < -0.15 ? 270 : 90;
+  }
+  [src, grau, tinte, innen].forEach((m) => m.delete());
+  return drehung;
 }
 
 // Schatten und Graustich entfernen: Hintergrund schätzen und herausrechnen (wie ein Flachbettscan)
@@ -401,14 +516,46 @@ function scanLook(cv, rgba) {
 // ---------- Bild vorbereiten ----------
 const MAX_SEITE = 3200; // größere Fotos werden verkleinert (reicht für Briefe, schont den Speicher)
 
+// JPEG-Kopf lesen: EXIF-Ausrichtung (1–8) und die gespeicherte Pixelgröße
+async function jpegInfo(blob) {
+  try {
+    const v = new DataView(await blob.slice(0, 256 * 1024).arrayBuffer());
+    if (v.getUint16(0) !== 0xffd8) return null;
+    let o = 2, orientierung = 1, breite = 0, hoehe = 0;
+    while (o + 4 < v.byteLength) {
+      const marker = v.getUint16(o), len = v.getUint16(o + 2);
+      if (marker === 0xffe1 && v.getUint32(o + 4) === 0x45786966) {
+        const t = o + 10, le = v.getUint16(t) === 0x4949;
+        const ifd = t + v.getUint32(t + 4, le);
+        const n = v.getUint16(ifd, le);
+        for (let i = 0; i < n; i++) { const e = ifd + 2 + i * 12; if (v.getUint16(e, le) === 0x0112) orientierung = v.getUint16(e + 8, le); }
+      } else if (marker >= 0xffc0 && marker <= 0xffcf && ![0xffc4, 0xffc8, 0xffcc].includes(marker)) {
+        hoehe = v.getUint16(o + 5); breite = v.getUint16(o + 7);
+        break;
+      }
+      o += 2 + len;
+    }
+    return { orientierung, breite, hoehe };
+  } catch { return null; }
+}
+
 async function alsCanvas(quelle) {
   const bild = quelle instanceof Blob ? await createImageBitmap(quelle, { imageOrientation: "from-image" }) : quelle;
   const w = bild.videoWidth || bild.width, h = bild.videoHeight || bild.height;
+  // Absicherung: Hat der Browser die EXIF-Drehung (Hochformat-Foto quer gespeichert) nicht angewendet, selbst drehen
+  let drehen = 0;
+  if (quelle instanceof Blob) {
+    const j = await jpegInfo(quelle);
+    if (j && j.orientierung >= 5 && j.breite !== j.hoehe && w === j.breite && h === j.hoehe) drehen = j.orientierung === 8 || j.orientierung === 7 ? 270 : 90;
+  }
   const f = Math.min(1, MAX_SEITE / Math.max(w, h));
+  const bw = Math.round(w * f), bh = Math.round(h * f);
   const c = document.createElement("canvas");
-  c.width = Math.round(w * f);
-  c.height = Math.round(h * f);
-  c.getContext("2d").drawImage(bild, 0, 0, c.width, c.height);
+  c.width = drehen ? bh : bw;
+  c.height = drehen ? bw : bh;
+  const g = c.getContext("2d");
+  if (drehen) { g.translate(c.width / 2, c.height / 2); g.rotate((drehen * Math.PI) / 180); g.drawImage(bild, -bw / 2, -bh / 2, bw, bh); }
+  else g.drawImage(bild, 0, 0, bw, bh);
   bild.close?.();
   return c;
 }
@@ -452,30 +599,29 @@ class Pruefer {
     const p = this.huelle;
     clearInterval(this.countdown);
     // Vorschau klein und schnell – die volle Auflösung wird erst beim Übernehmen berechnet
-    this.ergebnis = entzerren(this.cv, a.roh, a.ecken, { scan: this.einstellungen().scan, maxSeite: 1200 });
+    const opt = { scan: this.einstellungen().scan, maxSeite: 1200 };
+    if (a.drehung === undefined) {
+      // Ausrichtung einmalig automatisch bestimmen (Schrift aufrecht) – auf einer eigenen, größeren Fassung für sichere Erkennung
+      try {
+        const probe = entzerren(this.cv, a.roh, a.ecken, { scan: true, maxSeite: 2000 });
+        a.drehung = textAusrichtung(this.cv, probe);
+        probe.width = probe.height = 0;
+      } catch { a.drehung = 0; }
+    }
+    this.ergebnis = entzerren(this.cv, a.roh, a.ecken, { ...opt, drehung: a.drehung });
     p.hidden = false;
     p.innerHTML = `<div class="sc-vorschau"></div>
       ${a.erkannt ? "" : '<p class="sc-warn">Kein Blatt erkannt – ganzes Foto übernommen. Mit „Ecken anpassen“ zuschneiden.</p>'}
       <div class="sc-reihe">
-        <button class="sc-zweit" data-p="neu">↺ Neu</button>
-        <button class="sc-zweit" data-p="ecken">⬚ Ecken anpassen</button>
-        <button class="sc-zweit" data-p="modus">${this.einstellungen().scan ? "🎨 Farbe" : "📄 Scan"}</button>
+        <button class="sc-zweit" data-p="neu">↺<br>Neu</button>
+        <button class="sc-zweit" data-p="ecken">⬚<br>Ecken</button>
+        <button class="sc-zweit" data-p="drehen">⟳<br>Drehen</button>
+        <button class="sc-zweit" data-p="modus">${this.einstellungen().scan ? "🎨<br>Farbe" : "📄<br>Scan"}</button>
       </div>
       <button class="sc-ok" data-p="ok">✓ Seite übernehmen</button>`;
     this.ergebnis.className = "sc-ergebnis";
     p.querySelector(".sc-vorschau").append(this.ergebnis);
     p.onclick = (e) => { const b = e.target.closest("[data-p]"); if (b && !b.disabled) this.aktion(b.dataset.p, b); };
-    // Blatt erkannt und nichts angefasst: nach 2 s automatisch übernehmen
-    if (a.erkannt && !a.bearbeitet) {
-      let rest = 2;
-      const k = p.querySelector("[data-p=ok]");
-      k.textContent = `✓ Übernehme in ${rest} …`;
-      this.countdown = setInterval(() => {
-        rest--;
-        if (rest > 0) k.textContent = `✓ Übernehme in ${rest} …`;
-        else { clearInterval(this.countdown); if (!k.disabled) this.aktion("ok", k); }
-      }, 1000);
-    }
   }
 
   eckenAnpassen() {
@@ -535,12 +681,13 @@ class Pruefer {
         knopf.disabled = true;
         knopf.textContent = "Speichere …";
         await new Promise((r) => setTimeout(r, 30)); // Anzeige aktualisieren lassen
-        const voll = entzerren(this.cv, this.aufnahme.roh, this.aufnahme.ecken, { scan: this.einstellungen().scan });
+        const voll = entzerren(this.cv, this.aufnahme.roh, this.aufnahme.ecken, { scan: this.einstellungen().scan, drehung: this.aufnahme.drehung || 0 });
         const blob = await new Promise((r) => voll.toBlob(r, "image/jpeg", 0.9));
         return this.schliessen({ blob });
       }
       case "neu": return this.schliessen(null);
       case "modus": e.scan = !e.scan; this.speichereEinstellungen(e); return this.darstellen();
+      case "drehen": this.aufnahme.drehung = ((this.aufnahme.drehung || 0) + 90) % 360; return this.darstellen();
       case "ecken": return this.eckenAnpassen();
       case "ecken-abbrechen": return this.darstellen();
       case "ecken-ok": this.aufnahme.ecken = sortiereEcken(this.eckenEdit); this.aufnahme.erkannt = true; return this.darstellen();

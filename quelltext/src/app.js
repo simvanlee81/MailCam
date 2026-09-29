@@ -3,7 +3,7 @@
 import { FilenSDK } from "@filen/sdk";
 import { ladeOpenCV, fotoZuschneiden } from "./scanner.js";
 
-const VERSION = "1.6";
+const VERSION = "2.3";
 const WORKFLOW = "post-archiv.yml";
 const $ = (s) => document.querySelector(s);
 // Nur für automatische Tests: ersetzt Filen und GitHub durch Attrappen. Im normalen Betrieb nicht vorhanden.
@@ -50,7 +50,7 @@ async function liesJson(p) {
   const buf = await sdk().fs().readFile({ path: p });
   return JSON.parse(new TextDecoder().decode(buf));
 }
-async function hochladen(datei, onProgress) {
+async function hochladen(datei, onProgress, ziel = null) {
   if (TEST) return TEST.hochladen(datei, onProgress);
   const abbruch = new AbortController();
   // Zeitlimit: 60 s + 30 s pro MB, ohne Fortschritt – eine hängende Verbindung blockiert sonst die ganze Warteschlange
@@ -60,7 +60,7 @@ async function hochladen(datei, onProgress) {
   const wache = () => { clearTimeout(timer); timer = setTimeout(() => abbruch.abort(), limit); };
   wache();
   try {
-    const parent = await eingangUuid();
+    const parent = ziel || (await eingangUuid());
     const item = await Promise.race([
       sdk().cloud().uploadWebFile({
         file: datei, parent, abortSignal: abbruch.signal,
@@ -379,7 +379,98 @@ async function ladeStand() {
   } catch (e) {
     standFehler = /not found|ENOENT|does not exist/i.test(e.message) ? "Noch keine Daten – nach dem ersten Lauf erscheinen hier deine Fristen." : e.message;
   }
+  erledigtAbgleichen();
   zeichne();
+}
+
+// ---------- „Zu erledigen“ abhaken ----------
+// Pro Klick eine kleine Datei in _system/erledigt (<Zeit>_<ID>_<1|0>.json). Das Post-Archiv übernimmt sie beim
+// nächsten Lauf in den Index (Übersicht.md, Dokumente-Index, Erinnerungen). Bis dahin merkt sich die App den Klick selbst.
+const erledigtLokal = () => speicher.lies("pk_erledigt", {});
+let erledigtAuf = false; // Liste „Erledigt“ aufgeklappt?
+let erledigtFremd = {}; // Klicks von anderen Geräten, die der Workflow noch nicht übernommen hat
+const KLICK = /^(\d{10,})_([0-9a-f]{6,64})_([01])\.json$/;
+async function erledigtAbgleichen() {
+  // Lokale Klicks vergessen, sobald der Workflow sie in app.json übernommen hat (neuerer Stand)
+  if (stand?.stand) {
+    const t = new Date(stand.stand).getTime();
+    const l = erledigtLokal();
+    for (const [id, k] of Object.entries(l)) if (k.zeit < t && k.gesendet) delete l[id];
+    speicher.schreib("pk_erledigt", l);
+  }
+  try {
+    const namen = TEST ? (TEST.erledigtListe?.() || []) : await sdk().fs().readdir({ path: pfad("_system/erledigt") });
+    const neu = {};
+    for (const n of namen) {
+      const m = KLICK.exec(n);
+      if (!m) continue;
+      const k = { zeit: Number(m[1]), erledigt: m[3] === "1", name: n };
+      if (!neu[m[2]] || neu[m[2]].zeit < k.zeit) neu[m[2]] = k;
+    }
+    erledigtFremd = neu;
+    zeichne();
+  } catch { /* Ordner gibt es noch nicht */ }
+}
+// Gültiger Zustand je Dokument: der jüngste Klick (lokal oder von einem anderen Gerät)
+function klickFuer(id) {
+  const a = erledigtLokal()[id], b = erledigtFremd[id];
+  if (a && b) return a.zeit >= b.zeit ? a : b;
+  return a || b || null;
+}
+function todoListen() {
+  const s = stand || {};
+  const offen = [], erledigt = [];
+  const gesehen = new Set();
+  const alle = [...(s.zuErledigen || []).map((d) => [d, false]), ...(s.erledigt || []).map((d) => [d, true])];
+  for (const [id, k] of Object.entries(erledigtLokal())) if (k.eintrag) alle.push([k.eintrag, !k.erledigt]);
+  for (const [d, warErledigt] of alle) {
+    const key = d.id || d.datei;
+    if (gesehen.has(key)) continue;
+    gesehen.add(key);
+    const k = d.id ? klickFuer(d.id) : null;
+    const istErledigt = k ? k.erledigt : warErledigt;
+    (istErledigt ? erledigt : offen).push(d);
+  }
+  return { offen, erledigt: erledigt.slice(0, 10) };
+}
+// Der Stand stammt von einem älteren Post-Archiv (To-dos ohne Dokument-ID): kurzen Prüflauf starten, der ihn neu schreibt
+let erneuertSeit = 0;
+async function standErneuern() {
+  if (Date.now() - erneuertSeit < 180000) return meldung("Die Liste wird gerade aktualisiert – in 1–2 Minuten geht das Abhaken.");
+  try {
+    const g = einst().github;
+    await github(`/actions/workflows/${WORKFLOW}/dispatches`, { method: "POST", body: JSON.stringify({ ref: g.branch || "main", inputs: { modus: "eingang" } }) });
+    erneuertSeit = Date.now();
+    meldung("Die Liste wird einmalig aktualisiert (Post-Archiv ab v3.2 nötig) – in 1–2 Minuten geht das Abhaken.");
+    for (const t of [70000, 110000, 160000]) setTimeout(ladeStand, t);
+  } catch (e) {
+    meldung(`Liste konnte nicht aktualisiert werden: ${e.message}`);
+  }
+}
+async function erledigtSetzen(el, wert) {
+  const id = el.dataset.id;
+  if (!id) return standErneuern();
+  const { offen, erledigt } = todoListen();
+  const eintrag = [...offen, ...erledigt].find((d) => d.id === id);
+  const zeit = Date.now();
+  const l = erledigtLokal();
+  l[id] = { zeit, erledigt: wert, eintrag, gesendet: false };
+  speicher.schreib("pk_erledigt", l);
+  zeichne();
+  meldung(wert ? "✓ Erledigt – rückgängig unter „Erledigt“" : "Wieder offen");
+  try {
+    const name = `${zeit}_${id}_${wert ? 1 : 0}.json`;
+    const inhalt = JSON.stringify({ id, erledigt: wert, zeit: new Date(zeit).toISOString(), absender: eintrag?.absender, typ: eintrag?.typ, handlung: eintrag?.handlung, datei: eintrag?.datei });
+    const ordner = TEST ? null : await sdk().fs().mkdir({ path: pfad("_system/erledigt") });
+    await hochladen(new File([inhalt], name, { type: "application/json" }), null, ordner);
+    const l2 = erledigtLokal();
+    if (l2[id]?.zeit === zeit) { l2[id].gesendet = true; speicher.schreib("pk_erledigt", l2); }
+  } catch (e) {
+    const l2 = erledigtLokal();
+    if (l2[id]?.zeit === zeit) { delete l2[id]; speicher.schreib("pk_erledigt", l2); }
+    zeichne();
+    meldung(`Konnte nicht speichern (${e.message}) – bitte noch einmal tippen.`);
+  }
 }
 
 // ---------- Darstellung ----------
@@ -417,6 +508,41 @@ function dokKarte(d) {
   </article>`;
 }
 
+// Kompakte Karte für „Zuletzt archiviert“: eine Zeile Absender/Typ, eine Zeile Datum · Kategorie · Betrag; antippen klappt Details auf
+function dokKlein(d) {
+  const info = [d.typ, d.briefdatum ? deDatum(d.briefdatum) : "", d.kategorie, d.betrag ? `${Number(d.betrag.wert).toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €` : ""].filter(Boolean).map(esc).join(" · ");
+  const mehr = [d.zusammenfassung ? `<p>${esc(d.zusammenfassung)}</p>` : "", `<div class="datei">📄 ${esc(d.datei)}</div>`].join("");
+  return `<li class="dok-klein"><details><summary><div class="dk-kopf"><strong>${esc(d.absender)}</strong></div><div class="klein">${info}</div></summary>${mehr}</details></li>`;
+}
+
+// ---------- Installieren (eigenes Fenster statt Browser-Tab) ----------
+// Chrome/Edge/Samsung feuern „beforeinstallprompt“ oft schon vor dem Zeichnen der Einstellungen – daher global abfangen
+let installEvent = null;
+window.addEventListener("beforeinstallprompt", (ev) => { ev.preventDefault(); installEvent = ev; if (ansicht === "einrichtung") zeichne(); });
+window.addEventListener("appinstalled", () => { installEvent = null; meldung("Installiert ✓ – ab jetzt über das Symbol auf dem Startbildschirm öffnen."); });
+const istInstalliert = () => window.matchMedia?.("(display-mode: standalone)").matches || window.matchMedia?.("(display-mode: fullscreen)").matches || navigator.standalone === true;
+function installBereich() {
+  if (istInstalliert()) return `<p class="ok">✓ Läuft als installierte App im eigenen Fenster.</p>`;
+  if (location.protocol === "file:") return `<p class="klein">Als lokale Datei geöffnet – installieren geht nur über die Web-Adresse (GitHub Pages).</p>`;
+  if (installEvent) return `<p class="klein">Läuft dann im eigenen Fenster statt als Browser-Tab – kein versehentliches Schließen durch Tab-Aufräumen.</p><button data-a="installieren">📲 App installieren</button>`;
+  const ua = navigator.userAgent;
+  const ios = /iPhone|iPad|iPod/.test(ua) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  if (ios) return `<p class="klein">In Safari unten auf <strong>Teilen</strong> (□↑) tippen → <strong>Zum Home-Bildschirm</strong> → <strong>Hinzufügen</strong>.</p>`;
+  if (/Firefox|FxiOS/.test(ua)) return `<p class="klein">Im Firefox-Menü (⋮) <strong>Installieren</strong> bzw. <strong>Zum Startbildschirm hinzufügen</strong> wählen. Noch besser läuft die App, wenn du sie in Chrome öffnest und dort installierst.</p>`;
+  return `<p class="klein">Im Browser-Menü (⋮) <strong>App installieren</strong> bzw. <strong>Zum Startbildschirm hinzufügen</strong> wählen. Ist sie schon installiert, öffne sie über das Symbol auf dem Startbildschirm.</p>`;
+}
+async function installieren() {
+  if (!installEvent) return zeichne();
+  const ev = installEvent;
+  installEvent = null;
+  ev.prompt();
+  try {
+    const { outcome } = await ev.userChoice;
+    meldung(outcome === "accepted" ? "Wird installiert …" : "Installation abgebrochen – geht jederzeit über das Browser-Menü.");
+  } catch { /* ignorieren */ }
+  zeichne();
+}
+
 function ansichtEinrichtung() {
   const e = einst();
   const angemeldet = !!speicher.lies("pk_filen");
@@ -445,6 +571,10 @@ function ansichtEinrichtung() {
     <label class="schalter"><input type="checkbox" id="sc-scan" ${scanEinst().scan ? "checked" : ""}> Scan-Look (Schatten entfernen, weißes Papier)</label>
     <p class="klein">Das Zuschneiden lädt beim ersten Mal einmalig ca. 10 MB.</p>
   </section>
+  <section class="karte">
+    <h2>4 · Als App installieren</h2>
+    ${installBereich()}
+  </section>
   ${e.github?.token && angemeldet ? `<button class="zweit" data-a="zurueck">Zurück</button>` : ""}
   <p class="klein mitte">Version ${VERSION}</p>`;
 }
@@ -454,16 +584,18 @@ function ansichtStart() {
   const fristen = s?.fristen?.length
     ? `<ul class="liste">${s.fristen.map((f) => `<li class="frist">${fristBadge(f)}<div><strong>${esc(f.was)}</strong><div class="klein">${esc(f.absender)}</div></div></li>`).join("")}</ul>`
     : `<p class="klein">${s ? "Keine offenen Fristen 🎉" : esc(standFehler || "Lädt …")}</p>`;
-  const todo = s?.zuErledigen?.length
-    ? `<ul class="liste">${s.zuErledigen.map((d) => `<li><span>⚠️</span><div><strong>${esc(d.absender)}</strong> · ${esc(d.typ)}<div class="klein">${d.handlung.map(esc).join("; ")}</div></div></li>`).join("")}</ul>`
-    : "";
+  const { offen, erledigt } = todoListen();
+  const todoZeile = (d, fertig) => `<li class="todo-zeile${fertig ? " fertig" : ""}"><div><strong>${esc(d.absender)}</strong> · ${esc(d.typ)}<div class="klein">${(d.handlung || []).map(esc).join("; ")}</div></div><button class="haken" data-a="${fertig ? "wieder-offen" : "erledigt"}" data-id="${esc(d.id || "")}" aria-label="${fertig ? "Wieder öffnen" : "Als erledigt markieren"}">${fertig ? "↩︎" : ""}</button></li>`;
+  const todo = offen.length ? `<ul class="liste">${offen.map((d) => todoZeile(d, false)).join("")}</ul>` : erledigt.length ? `<p class="klein">Alles erledigt 🎉</p>` : "";
+  const fertigListe = erledigt.length ? `<details class="erledigt"${erledigtAuf ? " open" : ""}><summary>Erledigt (${erledigt.length})</summary><ul class="liste">${erledigt.map((d) => todoZeile(d, true)).join("")}</ul></details>` : "";
   return `<header><h1>Post-Kamera</h1><button class="icon" data-a="einrichtung" aria-label="Einstellungen">⚙️</button></header>
   <button class="gross" data-a="kamera">📷<span>Brief fotografieren</span></button>
   <button class="zweit" data-a="datei">📎 Foto oder PDF auswählen</button>
   ${lauf ? `<button class="zweit" data-a="zum-lauf">⏳ Laufende Verarbeitung ansehen</button>` : ""}
+  ${s?.kiFehler ? `<p class="hinweis">${s.kiFehler === "guthaben" ? "🤖 KI-Guthaben aufgebraucht – Briefe werden ohne KI ausgewertet (einfachere Zusammenfassung). Guthaben unter console.anthropic.com aufladen." : `🤖 KI beim letzten Lauf nicht erreichbar – ausgewertet ohne KI. (${esc(s.kiFehler)})`}</p>` : ""}
   <section><h2>Fristen</h2>${fristen}</section>
-  ${todo ? `<section><h2>Zu erledigen</h2>${todo}</section>` : ""}
-  ${s?.neueste?.length ? `<section><h2>Zuletzt archiviert</h2>${s.neueste.slice(0, 5).map(dokKarte).join("")}</section>` : ""}
+  ${todo || fertigListe ? `<section><h2>Zu erledigen</h2>${todo}${fertigListe}</section>` : ""}
+  ${s?.neueste?.length ? `<section><h2>Zuletzt archiviert</h2><ul class="liste">${s.neueste.slice(0, 8).map(dokKlein).join("")}</ul></section>` : ""}
   ${s ? `<p class="klein mitte">${s.anzahl} Dokumente · Stand ${new Date(s.stand).toLocaleString("de-DE", { dateStyle: "short", timeStyle: "short" })} <button class="link" data-a="neu-laden">aktualisieren</button></p>` : ""}`;
 }
 
@@ -592,6 +724,9 @@ const aktionen = {
   einrichtung: () => { ansicht = "einrichtung"; zeichne(); },
   zurueck: () => { ansicht = "start"; zeichne(); ladeStand(); },
   "neu-laden": ladeStand,
+  installieren,
+  erledigt: (el) => erledigtSetzen(el, true),
+  "wieder-offen": (el) => erledigtSetzen(el, false),
   "zum-lauf": () => { ansicht = "lauf"; zeichne(); beobachten(); },
   "lauf-abbrechen": () => { lauf = null; speicher.weg("pk_lauf"); ansicht = sitzung() ? "aufnahme" : "start"; zeichne(); meldung("Abgebrochen. Du kannst Seiten löschen, neu versuchen oder die Aufnahme verwerfen."); },
   "lauf-schliessen": () => { lauf = null; speicher.weg("pk_lauf"); ansicht = "start"; zeichne(); ladeStand(); },
@@ -640,6 +775,13 @@ const aktionen = {
     ladeStand();
   },
 };
+// Kamera-Schalter sofort speichern (unabhängig von „Speichern & testen“)
+document.addEventListener("change", (ev) => {
+  if (!["sc-zu", "sc-scan"].includes(ev.target.id)) return;
+  scanEinstSpeichern({ ...scanEinst(), zuschneiden: $("#sc-zu").checked, scan: $("#sc-scan").checked });
+  meldung("Gespeichert ✓");
+});
+document.addEventListener("toggle", (ev) => { if (ev.target.matches?.("details.erledigt")) erledigtAuf = ev.target.open; }, true);
 document.addEventListener("click", (ev) => {
   const el = ev.target.closest("[data-a]");
   if (!el || el.disabled) return;
