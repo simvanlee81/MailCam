@@ -3,7 +3,7 @@
 import { FilenSDK } from "@filen/sdk";
 import { ladeOpenCV, fotoZuschneiden } from "./scanner.js";
 
-const VERSION = "2.4";
+const VERSION = "2.5";
 const WORKFLOW = "post-archiv.yml";
 const $ = (s) => document.querySelector(s);
 // Nur für automatische Tests: ersetzt Filen und GitHub durch Attrappen. Im normalen Betrieb nicht vorhanden.

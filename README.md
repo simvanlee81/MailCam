@@ -51,10 +51,9 @@ Fertig. Ab jetzt reicht: **Symbol → 📷 → Fertig**.
 
 ---
 
-## Update auf v2.4
+## Update auf v2.5
 
-1. Im Repo `post-archiv` den Ordner `src` aus `post-archiv_v3.4.zip` neu hochladen (die Workflow-Datei bleibt gleich).
-2. Im Repo `MailCam` die Datei `app.js` neu hochladen (von v2.2 oder älter zusätzlich `index.html` und `manifest.webmanifest`, von v1.3 oder älter zusätzlich `sw.js`).
+Im Repo `MailCam` die Dateien `app.js`, `index.html` und `manifest.webmanifest` neu hochladen (von v1.3 oder älter zusätzlich `sw.js`). Wer von v2.3 oder älter kommt, braucht außerdem Post-Archiv v3.4.
 
 ## Update von v1.0 auf v1.1
 
@@ -120,6 +119,7 @@ Unter **Zu erledigen** hat jeder Eintrag rechts einen Kreis. Antippen = erledigt
 
 ## Versionen
 
+- **v2.5**: Android-Navigationsleiste in der installierten App schwarz statt weiß (schwarzer Streifen hinter der Leiste, schwarze Hintergrundfarbe im Manifest).
 - **v2.4**: Abhaken eines To-dos blendet auch die zugehörigen Fristen aus (braucht Post-Archiv v3.4 für die dauerhafte Übernahme).
 - **v2.3**: Neuer Bereich ⚙️ → „4 · Als App installieren“: Installations-Knopf in Chrome/Edge/Samsung Internet, Anleitung für iPhone/Safari und Firefox, Anzeige „läuft als installierte App“. Zusätzliche Meta-Tags für Homescreen-Symbol und Titel; feste App-ID im Manifest.
 - **v2.2**: „Zuletzt archiviert“ als kleine Karten (Absender, Typ, Datum, Kategorie, Betrag), antippen zeigt Zusammenfassung und Datei; keine Warn-/To-do-Kästen mehr in dieser Liste; 8 statt 5 Einträge; Hinweis, wenn die KI nicht verfügbar ist (z. B. Guthaben leer). Braucht Post-Archiv v3.3.
