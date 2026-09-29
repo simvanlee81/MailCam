@@ -51,9 +51,10 @@ Fertig. Ab jetzt reicht: **Symbol → 📷 → Fertig**.
 
 ---
 
-## Update auf v2.3
+## Update auf v2.4
 
-Im Repo `MailCam` die Dateien `app.js`, `index.html` und `manifest.webmanifest` neu hochladen (von v1.3 oder älter zusätzlich `sw.js`). Wer von v2.1 oder älter kommt, braucht außerdem Post-Archiv v3.3.
+1. Im Repo `post-archiv` den Ordner `src` aus `post-archiv_v3.4.zip` neu hochladen (die Workflow-Datei bleibt gleich).
+2. Im Repo `MailCam` die Datei `app.js` neu hochladen (von v2.2 oder älter zusätzlich `index.html` und `manifest.webmanifest`, von v1.3 oder älter zusätzlich `sw.js`).
 
 ## Update von v1.0 auf v1.1
 
@@ -93,7 +94,7 @@ Du kannst die App während der Verarbeitung schließen. Das Ergebnis erscheint b
 
 ## To-dos abhaken
 
-Unter **Zu erledigen** hat jeder Eintrag rechts einen Kreis. Antippen = erledigt. Der Haken gilt sofort in der App und wird in Filen gespeichert (`Dokumente/_system/erledigt`), also auch auf anderen Geräten sichtbar. Beim nächsten Lauf des Post-Archivs (spätestens nach ein paar Stunden) wird er fest übernommen: `Übersicht.md` und `Dokumente-Index.md` zeigen das To-do dann als erledigt, und für das Dokument kommen keine Frist-Erinnerungen per Mail mehr. Die Liste **Erledigt** zeigt die letzten 10.
+Unter **Zu erledigen** hat jeder Eintrag rechts einen Kreis. Antippen = erledigt. Der Haken gilt sofort in der App und wird in Filen gespeichert (`Dokumente/_system/erledigt`), also auch auf anderen Geräten sichtbar. Beim nächsten Lauf des Post-Archivs (spätestens nach ein paar Stunden) wird er fest übernommen: `Übersicht.md` und `Dokumente-Index.md` zeigen das To-do dann als erledigt, die Fristen des Dokuments verschwinden (App, Übersicht, Kalender) und es kommen keine Frist-Erinnerungen per Mail mehr. Die Liste **Erledigt** zeigt die letzten 10.
 
 ## Datenschutz
 
@@ -119,6 +120,7 @@ Unter **Zu erledigen** hat jeder Eintrag rechts einen Kreis. Antippen = erledigt
 
 ## Versionen
 
+- **v2.4**: Abhaken eines To-dos blendet auch die zugehörigen Fristen aus (braucht Post-Archiv v3.4 für die dauerhafte Übernahme).
 - **v2.3**: Neuer Bereich ⚙️ → „4 · Als App installieren“: Installations-Knopf in Chrome/Edge/Samsung Internet, Anleitung für iPhone/Safari und Firefox, Anzeige „läuft als installierte App“. Zusätzliche Meta-Tags für Homescreen-Symbol und Titel; feste App-ID im Manifest.
 - **v2.2**: „Zuletzt archiviert“ als kleine Karten (Absender, Typ, Datum, Kategorie, Betrag), antippen zeigt Zusammenfassung und Datei; keine Warn-/To-do-Kästen mehr in dieser Liste; 8 statt 5 Einträge; Hinweis, wenn die KI nicht verfügbar ist (z. B. Guthaben leer). Braucht Post-Archiv v3.3.
 - **v2.1**: Stammt die To-do-Liste noch von einem älteren Post-Archiv, startet die App beim Abhaken selbst einen kurzen Lauf, der sie erneuert (statt nur einen Hinweis zu zeigen). Braucht Post-Archiv v3.2.

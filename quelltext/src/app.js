@@ -3,7 +3,7 @@
 import { FilenSDK } from "@filen/sdk";
 import { ladeOpenCV, fotoZuschneiden } from "./scanner.js";
 
-const VERSION = "2.3";
+const VERSION = "2.4";
 const WORKFLOW = "post-archiv.yml";
 const $ = (s) => document.querySelector(s);
 // Nur für automatische Tests: ersetzt Filen und GitHub durch Attrappen. Im normalen Betrieb nicht vorhanden.
@@ -431,7 +431,7 @@ function todoListen() {
     const istErledigt = k ? k.erledigt : warErledigt;
     (istErledigt ? erledigt : offen).push(d);
   }
-  return { offen, erledigt: erledigt.slice(0, 10) };
+  return { offen, erledigt: erledigt.slice(0, 10), alleErledigt: erledigt };
 }
 // Der Stand stammt von einem älteren Post-Archiv (To-dos ohne Dokument-ID): kurzen Prüflauf starten, der ihn neu schreibt
 let erneuertSeit = 0;
@@ -581,8 +581,12 @@ function ansichtEinrichtung() {
 
 function ansichtStart() {
   const s = stand;
-  const fristen = s?.fristen?.length
-    ? `<ul class="liste">${s.fristen.map((f) => `<li class="frist">${fristBadge(f)}<div><strong>${esc(f.was)}</strong><div class="klein">${esc(f.absender)}</div></div></li>`).join("")}</ul>`
+  // Fristen von abgehakten Dokumenten ausblenden (sofort, auch bevor das Post-Archiv den Haken übernommen hat)
+  const { alleErledigt: fertig } = todoListen();
+  const fertigIds = new Set(fertig.map((d) => d.id).filter(Boolean)), fertigDateien = new Set(fertig.map((d) => d.datei));
+  const offeneFr = (s?.fristen || []).filter((f) => !(f.id ? fertigIds.has(f.id) || klickFuer(f.id)?.erledigt : fertigDateien.has(f.datei)));
+  const fristen = offeneFr.length
+    ? `<ul class="liste">${offeneFr.map((f) => `<li class="frist">${fristBadge(f)}<div><strong>${esc(f.was)}</strong><div class="klein">${esc(f.absender)}</div></div></li>`).join("")}</ul>`
     : `<p class="klein">${s ? "Keine offenen Fristen 🎉" : esc(standFehler || "Lädt …")}</p>`;
   const { offen, erledigt } = todoListen();
   const todoZeile = (d, fertig) => `<li class="todo-zeile${fertig ? " fertig" : ""}"><div><strong>${esc(d.absender)}</strong> · ${esc(d.typ)}<div class="klein">${(d.handlung || []).map(esc).join("; ")}</div></div><button class="haken" data-a="${fertig ? "wieder-offen" : "erledigt"}" data-id="${esc(d.id || "")}" aria-label="${fertig ? "Wieder öffnen" : "Als erledigt markieren"}">${fertig ? "↩︎" : ""}</button></li>`;
